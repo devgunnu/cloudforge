@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
 
 // ============================================================
 // BACKEND HOOK: Waitlist signup
@@ -150,8 +151,8 @@ export default function CTA() {
                 </span>
               </div>
 
-              <a
-                href="/builder"
+              <Link
+                href="/dashboard"
                 className="lp-btn-primary"
                 style={{
                   fontFamily: 'var(--font-inter), system-ui, sans-serif',
@@ -165,7 +166,7 @@ export default function CTA() {
                 }}
               >
                 Try the builder now →
-              </a>
+              </Link>
             </motion.div>
           ) : (
             <motion.div
@@ -234,8 +235,8 @@ export default function CTA() {
                 }}
               >
                 or{' '}
-                <a
-                  href="/builder"
+                <Link
+                  href="/dashboard"
                   className="lp-nav-link"
                   style={{
                     color: 'var(--lp-accent)',
@@ -245,7 +246,7 @@ export default function CTA() {
                   }}
                 >
                   open the builder directly →
-                </a>
+                </Link>
               </p>
             </motion.div>
           )}

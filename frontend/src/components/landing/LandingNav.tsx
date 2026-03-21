@@ -73,7 +73,7 @@ export default function LandingNav() {
 
       {/* CTA */}
       <Link
-        href="/builder"
+        href="/dashboard"
         className="lp-btn-primary"
         style={{
           fontFamily: 'var(--font-inter), system-ui, sans-serif',
@@ -86,7 +86,7 @@ export default function LandingNav() {
           gap: '6px',
         }}
       >
-        Open Builder
+        Go to dashboard
         <span style={{ opacity: 0.6 }}>↗</span>
       </Link>
     </nav>

@@ -1,6 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import TerminalAnimation from './TerminalAnimation';
 import CanvasMockup from './CanvasMockup';
 
@@ -174,8 +175,8 @@ export default function Hero() {
           position: 'relative',
         }}
       >
-        <a
-          href="/builder"
+        <Link
+          href="/dashboard"
           className="lp-btn-primary"
           style={{
             fontFamily: 'var(--font-inter), system-ui, sans-serif',
@@ -191,7 +192,7 @@ export default function Hero() {
         >
           Start building free
           <span style={{ fontSize: '17px', lineHeight: 1 }}>→</span>
-        </a>
+        </Link>
         <a
           href="https://github.com"
           className="lp-btn-ghost"
