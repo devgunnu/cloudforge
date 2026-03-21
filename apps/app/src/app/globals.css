@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+:root {
+  --cf-bg-base:       #0a0e1a;
+  --cf-bg-surface:    #12172b;
+  --cf-bg-elevated:   #1e2640;
+  --cf-border:        rgba(255,255,255,0.06);
+  --cf-border-hover:  rgba(255,255,255,0.12);
+  --cf-green:         #00ff87;
+  --cf-green-dim:     rgba(0,255,135,0.12);
+  --cf-cyan:          #00d4ff;
+  --cf-cyan-dim:      rgba(0,212,255,0.10);
+  --cf-amber:         #ffb300;
+  --cf-amber-dim:     rgba(255,179,0,0.10);
+  --cf-red:           #ff4d4d;
+  --cf-text-primary:  #cdd6f4;
+  --cf-text-muted:    #6c7086;
+  --cf-text-hint:     #45475a;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  background-color: var(--cf-bg-base);
+  color: var(--cf-text-primary);
+  font-family: var(--font-inter), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Custom thin scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--cf-bg-elevated) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--cf-bg-elevated);
+  border-radius: 2px;
+}
+
+/* React Flow overrides */
+.react-flow__attribution {
+  display: none;
+}
+
+.react-flow__handle {
+  transition: opacity 150ms ease;
+}
