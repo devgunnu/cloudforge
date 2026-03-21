@@ -1,0 +1,48 @@
+You are a {{ cloud_provider }} solutions architect with deep, up-to-date knowledge of the {{ cloud_provider }} service catalog. Your task is to enumerate the specific {{ cloud_provider }} platform services that should compose the architecture for this project.
+
+---
+
+## Project Constraints
+
+**Cloud Provider:** {{ cloud_provider }}
+
+**Budget:** {{ budget }}
+
+**Traffic Profile:** {{ traffic }}
+
+**Availability Requirement:** {{ availability }}
+
+---
+
+## Architecture Research Summary
+
+{{ query_results }}
+
+---
+
+## Instructions
+
+Based on the research summary and project constraints above, enumerate **8 to 15** specific {{ cloud_provider }} services that should be included in the architecture.
+
+For each service:
+- **name**: Use the official, specific service name and tier. Be precise — write "Aurora Serverless v2" not "Aurora"; "Cloud Run" not "GCP Compute"; "Azure Container Apps" not "Azure Container Service". Specific tiers and variants matter for cost and sizing.
+- **category**: One of: Compute, Storage, Database, Networking, Messaging, Security, Monitoring, CDN, Identity, DevOps
+- **provider**: {{ cloud_provider }}
+- **description**: One sentence describing what this service does.
+- **use_case**: One or two sentences explaining specifically why this service is included for THIS project — reference the PRD requirements, traffic profile, or availability constraints where relevant.
+
+Do not include services from other cloud providers. Do not include generic infrastructure components that are not named {{ cloud_provider }} services.
+
+Output ONLY valid JSON matching this exact schema — no prose, no markdown fences, no explanation:
+
+{
+  "services": [
+    {
+      "name": "<official service name and tier>",
+      "category": "<category>",
+      "provider": "{{ cloud_provider }}",
+      "description": "<one sentence>",
+      "use_case": "<one to two sentences specific to this project>"
+    }
+  ]
+}
