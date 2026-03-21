@@ -7,9 +7,15 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "concurrently --names \"app,landing\" --prefix-colors \"cyan,green\" \"npm run dev --workspace=apps/app\" \"npm run dev --workspace=apps/landing\"",
     "dev:app": "npm run dev --workspace=apps/app",
     "dev:landing": "npm run dev --workspace=apps/landing",
-    "build": "npm run build --workspaces",
-    "lint": "npm run lint --workspaces"
+    "build": "npm run build --workspaces --if-present",
+    "build:app": "npm run build --workspace=apps/app",
+    "build:landing": "npm run build --workspace=apps/landing",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
   }
 }

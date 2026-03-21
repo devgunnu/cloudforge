@@ -46,15 +46,37 @@ export default function CTA() {
 
       {/* Form or success */}
       {submitted ? (
-        <p
-          style={{
-            fontFamily: 'var(--font-jetbrains-mono), monospace',
-            fontSize: '14px',
-            color: 'var(--cf-green)',
-          }}
-        >
-          ✓ You&apos;re on the list. We&apos;ll ping you when it ships.
-        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+          <p
+            style={{
+              fontFamily: 'var(--font-jetbrains-mono), monospace',
+              fontSize: '14px',
+              color: 'var(--cf-green)',
+            }}
+          >
+            ✓ You&apos;re on the list. We&apos;ll ping you when it ships.
+          </p>
+          <a
+            href={process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '10px 20px',
+              background: 'var(--cf-green-dim)',
+              border: '0.5px solid var(--cf-green)',
+              borderRadius: '8px',
+              fontFamily: 'var(--font-jetbrains-mono), monospace',
+              fontSize: '13px',
+              color: 'var(--cf-green)',
+              textDecoration: 'none',
+            }}
+          >
+            Try it now →
+          </a>
+        </div>
       ) : (
         <form
           onSubmit={handleSubmit}

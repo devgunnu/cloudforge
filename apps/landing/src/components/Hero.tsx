@@ -69,7 +69,9 @@ export default function Hero() {
         {/* CTA row */}
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
           <a
-            href="http://localhost:3000"
+            href={process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'}
+            target="_blank"
+            rel="noopener noreferrer"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
