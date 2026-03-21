@@ -179,6 +179,14 @@ html, body {
   transition: opacity 150ms ease;
 }
 
+/* ── App UI — Building/agent state accent (purple/violet) ──────── */
+:root {
+  --cf-purple:          #a78bfa;
+  --cf-purple-dim:      rgba(167, 139, 250, 0.12);
+  --cf-purple-border:   rgba(167, 139, 250, 0.25);
+  --cf-purple-glow:     rgba(167, 139, 250, 0.06);
+}
+
 /* ── Hero dot grid ─────────────────────────────────────────────── */
 .lp-hero-dotgrid {
   background-image: radial-gradient(circle, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
