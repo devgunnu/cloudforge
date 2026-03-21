@@ -55,10 +55,16 @@ export default function LandingNav() {
           transform: 'translateX(-50%)',
         }}
       >
-        {(['How it works', 'Features', 'Docs'] as const).map((label) => (
+        {(
+          [
+            { label: 'How it works', href: '#how-it-works' },
+            { label: 'Features', href: '#features' },
+            { label: 'Docs', href: '#' },
+          ] as const
+        ).map(({ label, href }) => (
           <a
             key={label}
-            href="#"
+            href={href}
             className="lp-nav-link"
             style={{
               fontFamily: 'var(--font-inter), system-ui, sans-serif',

@@ -19,8 +19,12 @@ export default function LandingPage() {
       <div style={{ paddingTop: '52px' }}>
         <Hero />
         <SocialProof />
-        <HowItWorks />
-        <Features />
+        <div id="how-it-works">
+          <HowItWorks />
+        </div>
+        <div id="features">
+          <Features />
+        </div>
         <TerraformPreview />
         <CTA />
       </div>
