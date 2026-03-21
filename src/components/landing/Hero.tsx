@@ -1,3 +1,5 @@
+'use client';
+
 import TerminalAnimation from './TerminalAnimation';
 
 export default function Hero() {
