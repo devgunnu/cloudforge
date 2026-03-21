@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import logging
 
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
@@ -11,6 +13,7 @@ from app.agents.architecture_planner.state import (
 )
 from app.agents.architecture_planner.prompts import render_prompt
 from app.agents.architecture_planner.llm_utils import API_ERROR_TYPES
+from app.agents.architecture_planner.cost_fetchers import fetch_cost_data
 
 __all__ = ["make_compliance_node"]
 
@@ -23,7 +26,7 @@ class ComplianceOutput(BaseModel):
 def make_compliance_node(llm):
     """Factory that returns a compliance_node bound to the provided LLM."""
 
-    def compliance_node(state: ArchitecturePlannerState) -> dict:
+    async def compliance_node(state: ArchitecturePlannerState) -> dict:
         if state["architecture_diagram"] is None:
             return {
                 "compliance_gaps": [],
@@ -31,6 +34,19 @@ def make_compliance_node(llm):
                 "current_node": "compliance",
                 "error_message": "Cannot run compliance check: architecture diagram is missing.",
             }
+
+        # Real-time cloud pricing enrichment (skips silently on failure or unsupported provider)
+        cost_data: str | None = None
+        if state["architecture_diagram"] is not None:
+            services = [node.service for node in state["architecture_diagram"].nodes]
+            try:
+                cost_data = await fetch_cost_data(
+                    cloud_provider=state["cloud_provider"],
+                    services=services,
+                    region=os.environ.get("AWS_REGION", "us-east-1"),
+                )
+            except Exception:
+                cost_data = None  # never block the compliance check
 
         architecture_diagram_json = state["architecture_diagram"].model_dump_json(by_alias=True)
 
@@ -43,6 +59,7 @@ def make_compliance_node(llm):
             budget=state["budget"],
             traffic=state["traffic"],
             availability=state["availability"],
+            cost_data=cost_data,
         )
         messages = [HumanMessage(content=prompt)]
 
