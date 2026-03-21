@@ -38,13 +38,16 @@ export default function AppSidebar() {
       }}
     >
       {/* Logo zone */}
-      <div
+      <Link
+        href="/dashboard"
+        aria-label="CloudForge — go to dashboard"
         style={{
           height: '40px',
           display: 'flex',
           alignItems: 'center',
           gap: '8px',
           marginBottom: '24px',
+          textDecoration: 'none',
         }}
       >
         <span
@@ -70,7 +73,7 @@ export default function AppSidebar() {
         >
           CloudForge
         </span>
-      </div>
+      </Link>
 
       {/* Nav links */}
       <nav aria-label="Main navigation">
