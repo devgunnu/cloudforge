@@ -4,8 +4,8 @@ from __future__ import annotations
 # LLM
 # ---------------------------------------------------------------------------
 
-DEFAULT_MODEL = "llama-3.1-8b-instant"  # Groq: strong model with tool-use support
-FAST_MODEL = "llama-3.1-8b-instant"  # Groq: fast model for lighter tasks like code fixing
+DEFAULT_MODEL = "qwen3.5"  # Ollama: strong model with tool-use support
+FAST_MODEL = "qwen3.5"  # Ollama: fast model for lighter tasks like code fixing
 
 # ---------------------------------------------------------------------------
 # Retry / iteration limits
