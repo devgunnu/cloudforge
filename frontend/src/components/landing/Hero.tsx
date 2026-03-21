@@ -176,7 +176,7 @@ export default function Hero() {
         }}
       >
         <Link
-          href="/dashboard"
+          href="/signup"
           className="lp-btn-primary"
           style={{
             fontFamily: 'var(--font-inter), system-ui, sans-serif',

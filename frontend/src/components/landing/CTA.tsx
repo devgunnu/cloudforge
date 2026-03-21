@@ -152,7 +152,7 @@ export default function CTA() {
               </div>
 
               <Link
-                href="/dashboard"
+                href="/signup"
                 className="lp-btn-primary"
                 style={{
                   fontFamily: 'var(--font-inter), system-ui, sans-serif',
@@ -165,7 +165,7 @@ export default function CTA() {
                   gap: '8px',
                 }}
               >
-                Try the builder now →
+                Create your account →
               </Link>
             </motion.div>
           ) : (
@@ -236,7 +236,7 @@ export default function CTA() {
               >
                 or{' '}
                 <Link
-                  href="/dashboard"
+                  href="/login"
                   className="lp-nav-link"
                   style={{
                     color: 'var(--lp-accent)',
@@ -245,7 +245,7 @@ export default function CTA() {
                     fontSize: '13px',
                   }}
                 >
-                  open the builder directly →
+                  sign in to existing account →
                 </Link>
               </p>
             </motion.div>

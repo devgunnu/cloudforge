@@ -77,24 +77,41 @@ export default function LandingNav() {
         ))}
       </div>
 
-      {/* CTA */}
-      <Link
-        href="/dashboard"
-        className="lp-btn-primary"
-        style={{
-          fontFamily: 'var(--font-inter), system-ui, sans-serif',
-          fontSize: '13px',
-          fontWeight: 500,
-          padding: '8px 18px',
-          borderRadius: '8px',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '6px',
-        }}
-      >
-        Go to dashboard
-        <span style={{ opacity: 0.6 }}>↗</span>
-      </Link>
+      {/* CTA group */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <Link
+          href="/login"
+          className="lp-btn-ghost"
+          style={{
+            fontFamily: 'var(--font-inter), system-ui, sans-serif',
+            fontSize: '13px',
+            fontWeight: 500,
+            padding: '7px 16px',
+            borderRadius: '8px',
+            display: 'inline-flex',
+            alignItems: 'center',
+          }}
+        >
+          Log in
+        </Link>
+        <Link
+          href="/signup"
+          className="lp-btn-primary"
+          style={{
+            fontFamily: 'var(--font-inter), system-ui, sans-serif',
+            fontSize: '13px',
+            fontWeight: 500,
+            padding: '7px 16px',
+            borderRadius: '8px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+          }}
+        >
+          Get started
+          <span style={{ opacity: 0.6 }}>↗</span>
+        </Link>
+      </div>
     </nav>
   );
 }
