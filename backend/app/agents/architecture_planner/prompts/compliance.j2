@@ -34,6 +34,16 @@ You are a cloud architecture compliance auditor. Your job is to review an archit
 
 {{ extra_context }}
 
+{% if cost_data %}
+---
+
+## Real-Time Cloud Pricing Data
+
+The following pricing was retrieved live from the cloud provider's public pricing API for the services in this architecture. Use these figures as ground truth when evaluating budget compliance in Category 2.
+
+{{ cost_data }}
+
+{% endif %}
 ---
 
 ## Compliance Review Instructions

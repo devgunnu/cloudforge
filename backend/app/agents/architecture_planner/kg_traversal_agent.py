@@ -58,13 +58,16 @@ def init_kuzu(
     db = kuzu.Database(db_path)
     conn = kuzu.Connection(db)
 
+    # Drop existing tables so each startup gets a clean, non-duplicated graph.
+    conn.execute("DROP TABLE IF EXISTS REL")
+    conn.execute("DROP TABLE IF EXISTS Node")
     conn.execute(
-        "CREATE NODE TABLE IF NOT EXISTS Node("
+        "CREATE NODE TABLE Node("
         "id STRING, label STRING, type STRING, community INT64, "
         "PRIMARY KEY(id))"
     )
     conn.execute(
-        "CREATE REL TABLE IF NOT EXISTS REL("
+        "CREATE REL TABLE REL("
         "FROM Node TO Node, "
         "type STRING, reason STRING, confidence DOUBLE, conflicted BOOL)"
     )
@@ -214,6 +217,8 @@ def make_graph_traversal_node(conn):
         new_blocked: list[str] = []
 
         # ---- RECOMMENDS + REQUIRES + ENABLES ----
+        communities = state.get("kg_communities", [])
+        community_clause = "AND b.community IN $communities " if communities else ""
         try:
             rec_result = conn.execute(
                 "MATCH (a:Node)-[r:REL]->(b:Node) "
@@ -221,8 +226,9 @@ def make_graph_traversal_node(conn):
                 "AND r.type IN ['RECOMMENDS', 'REQUIRES', 'ENABLES'] "
                 "AND r.confidence >= 0.75 "
                 "AND r.conflicted = false "
+                + community_clause +
                 "RETURN a.id, b.id, b.label, r.type, r.reason",
-                {"frontier": frontier},
+                {"frontier": frontier, "communities": communities},
             )
             for row in rec_result.get_as_df().to_dict("records"):
                 b_id = row["b.id"]
@@ -355,7 +361,9 @@ def build_kg_subgraph(
     community_summaries: dict = {}
     if Path(community_summaries_path).exists():
         with open(community_summaries_path) as f:
-            community_summaries = json.load(f)
+            raw = json.load(f)
+        # File format: {"communities": {"0": "...", ...}, "meta": {...}}
+        community_summaries = raw.get("communities", raw)
 
     builder = StateGraph(ArchitecturePlannerState)
     builder.add_node("nfr_parser", make_nfr_parser_node(llm, conn))

@@ -1,7 +1,15 @@
 You are an architectural constraint extractor for a knowledge graph reasoning engine.
 
-Extract constraint node IDs from the APPROVED LIST ONLY that match the system requirements below.
-Do not invent new identifiers. Only output IDs that appear in the approved list exactly as written.
+Your job is to identify which CONSTRAINTS from the approved list apply to this system.
+Constraints represent conditions the system must satisfy — budget limits, traffic shapes,
+consistency requirements, compliance rules, workload characteristics, etc.
+
+RULES:
+- Only output IDs from the APPROVED LIST. Never invent new ones.
+- Constraints are conditions, not solutions. Do NOT output architecture styles,
+  component types, or technology names — those are determined by graph traversal.
+- Example of correct output: ["limited_budget", "bursty_traffic", "stateless_workload"]
+- Example of WRONG output: ["serverless", "s3", "dynamodb"]  ← these are solutions, not constraints
 
 APPROVED CONSTRAINT IDs:
 {% for c in constraint_list %}
