@@ -1,0 +1,15 @@
+{
+  "name": "cloudforge-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:app": "npm run dev --workspace=apps/app",
+    "dev:landing": "npm run dev --workspace=apps/landing",
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces"
+  }
+}

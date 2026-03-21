@@ -1,0 +1,60 @@
+# ── Dependencies ────────────────────────────────────────────
+node_modules/
+.pnpm-store/
+
+# ── Next.js ─────────────────────────────────────────────────
+.next/
+out/
+
+# ── Build outputs ───────────────────────────────────────────
+build/
+dist/
+
+# ── TypeScript ──────────────────────────────────────────────
+*.tsbuildinfo
+next-env.d.ts
+
+# ── Environment variables ───────────────────────────────────
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+# keep .env.example — it documents required vars
+
+# ── pnpm (switched to npm) ──────────────────────────────────
+pnpm-lock.yaml
+.pnpm-debug.log
+
+# ── Logs ────────────────────────────────────────────────────
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# ── OS ──────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+
+# ── Editor ──────────────────────────────────────────────────
+.idea/
+.vscode/settings.json
+.vscode/*.code-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── Deployment ──────────────────────────────────────────────
+.vercel
+.turbo
+
+# ── Testing ─────────────────────────────────────────────────
+coverage/
+.nyc_output/
