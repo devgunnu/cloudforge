@@ -18,6 +18,120 @@
   --cf-text-hint:     #45475a;
 }
 
+/* ── Landing Page Design System (Direction C: Monochrome + One) ─────────── */
+:root {
+  /* Backgrounds — true near-monochrome, barely distinguishable layers */
+  --lp-bg:              #0D0F13;
+  --lp-surface:         #111318;
+  --lp-elevated:        #161820;
+
+  /* Borders — whisper thin */
+  --lp-border:          rgba(255, 255, 255, 0.05);
+  --lp-border-hover:    rgba(255, 255, 255, 0.10);
+
+  /* Accent — sage green, heavily desaturated, NOT neon */
+  --lp-accent:          #6EAB85;
+  --lp-accent-dim:      rgba(110, 171, 133, 0.10);
+  --lp-accent-glow:     rgba(110, 171, 133, 0.06);
+
+  /* Typography */
+  --lp-text-primary:    #E8E6E1;
+  --lp-text-secondary:  #9CA3AF;
+  --lp-text-hint:       #4B5563;
+
+  /* Spotlight — hero section underglow */
+  --lp-spotlight:       radial-gradient(
+    ellipse 80% 50% at 50% 100%,
+    rgba(110, 171, 133, 0.07) 0%,
+    transparent 70%
+  );
+}
+
+/* Scroll reveal base — elements start hidden, JS animates them */
+.lp-reveal {
+  opacity: 0;
+  transform: translateY(40px);
+}
+
+/* Feature card hover — CSS only, no JS handlers */
+.lp-card {
+  transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+  border: 0.5px solid var(--lp-border);
+  border-radius: 12px;
+}
+
+.lp-card:hover {
+  border-color: var(--lp-border-hover);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 0.5px rgba(110, 171, 133, 0.12);
+  transform: translateY(-2px);
+}
+
+/* Nav link hover */
+.lp-nav-link {
+  color: var(--lp-text-secondary);
+  transition: color 150ms ease;
+  text-decoration: none;
+}
+
+.lp-nav-link:hover {
+  color: var(--lp-text-primary);
+}
+
+/* Accent button */
+.lp-btn-primary {
+  background: var(--lp-accent-dim);
+  border: 0.5px solid rgba(110, 171, 133, 0.3);
+  color: var(--lp-accent);
+  transition: background 150ms ease, border-color 150ms ease;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.lp-btn-primary:hover {
+  background: rgba(110, 171, 133, 0.16);
+  border-color: rgba(110, 171, 133, 0.5);
+}
+
+/* Ghost button */
+.lp-btn-ghost {
+  background: transparent;
+  border: 0.5px solid var(--lp-border-hover);
+  color: var(--lp-text-secondary);
+  transition: border-color 150ms ease, color 150ms ease;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.lp-btn-ghost:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--lp-text-primary);
+}
+
+/* Input */
+.lp-input {
+  background: var(--lp-surface);
+  border: 0.5px solid var(--lp-border-hover);
+  color: var(--lp-text-primary);
+  transition: border-color 150ms ease;
+  outline: none;
+}
+
+.lp-input:focus {
+  border-color: rgba(110, 171, 133, 0.4);
+}
+
+/* Section divider */
+.lp-divider {
+  height: 1px;
+  background: var(--lp-border);
+  width: 100%;
+}
+
+@keyframes lp-spotlight-pulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 1; }
+}
+
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }

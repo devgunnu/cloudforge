@@ -3,123 +3,154 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const LINES = [
-  { text: '$ cloudforge init', color: 'var(--cf-text-primary)' },
-  { text: '→ Scanning architecture graph...', color: 'var(--cf-cyan)' },
-  { text: '→ Generating Terraform modules...', color: 'var(--cf-cyan)' },
-  { text: '→ Provisioning Lambda function...', color: 'var(--cf-cyan)' },
-  { text: '→ Configuring IAM policies...', color: 'var(--cf-cyan)' },
-  { text: '✓ 4 resources deployed in 4.2s', color: 'var(--cf-green)', bold: true },
-] as const;
+interface TerminalLine {
+  text: string;
+  color: string;
+  dim: boolean;
+}
 
-type Line = (typeof LINES)[number];
+const LINES: TerminalLine[] = [
+  { text: '$ cloudforge deploy --env prod', color: 'var(--lp-text-primary)', dim: false },
+  { text: '  ↳ Parsing architecture graph', color: 'var(--lp-text-secondary)', dim: true },
+  { text: '  ↳ Generating Terraform modules', color: 'var(--lp-text-secondary)', dim: true },
+  { text: '  ↳ Provisioning Lambda × 3', color: 'var(--lp-text-secondary)', dim: true },
+  { text: '  ↳ Configuring IAM policies', color: 'var(--lp-text-secondary)', dim: true },
+  { text: '', color: '', dim: false },
+  { text: '  ✓ 4 resources live  •  us-east-1  •  4.2s', color: 'var(--lp-accent)', dim: false },
+];
 
 export default function TerminalAnimation() {
   const [visibleCount, setVisibleCount] = useState(0);
+  const [done, setDone] = useState(false);
 
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
 
-    function showNextLine(index: number) {
+    function showNext(index: number): void {
       if (index < LINES.length) {
-        timeout = setTimeout(() => {
-          setVisibleCount(index + 1);
-          showNextLine(index + 1);
-        }, 400);
+        timeout = setTimeout(
+          () => {
+            setVisibleCount(index + 1);
+            if (index + 1 === LINES.length) setDone(true);
+            showNext(index + 1);
+          },
+          LINES[index].text === '' ? 150 : 380,
+        );
       } else {
-        // Reset and loop after 3s pause
         timeout = setTimeout(() => {
           setVisibleCount(0);
-          setTimeout(() => showNextLine(0), 100);
-        }, 3000);
+          setDone(false);
+          setTimeout(() => showNext(0), 200);
+        }, 3500);
       }
     }
 
-    showNextLine(0);
+    showNext(0);
     return () => clearTimeout(timeout);
   }, []);
 
   return (
     <div
       style={{
-        width: '380px',
-        borderRadius: '12px',
-        background: 'var(--cf-bg-surface)',
-        border: '0.5px solid var(--cf-border)',
+        width: '100%',
+        maxWidth: '520px',
+        borderRadius: '14px',
+        background: 'var(--lp-surface)',
+        border: '1px solid var(--lp-border-hover)',
         overflow: 'hidden',
-        flexShrink: 0,
+        boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 0 0.5px rgba(255,255,255,0.04)',
       }}
     >
       {/* Title bar */}
       <div
         style={{
-          height: '36px',
-          background: 'var(--cf-bg-elevated)',
-          borderBottom: '0.5px solid var(--cf-border)',
+          height: '44px',
+          background: 'var(--lp-elevated)',
+          borderBottom: '1px solid var(--lp-border)',
           display: 'flex',
           alignItems: 'center',
-          padding: '0 12px',
-          gap: '8px',
+          justifyContent: 'space-between',
+          padding: '0 16px',
+          position: 'relative',
         }}
       >
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ff4d4d' }} />
-          <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#ffb300' }} />
-          <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#00ff87' }} />
+        {/* Traffic lights — monochrome to match Direction C */}
+        <div style={{ display: 'flex', gap: '7px', alignItems: 'center' }}>
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              style={{
+                width: '11px',
+                height: '11px',
+                borderRadius: '50%',
+                background: '#45474F',
+              }}
+            />
+          ))}
         </div>
+
+        {/* Centered title */}
         <span
           style={{
             fontFamily: 'var(--font-jetbrains-mono), monospace',
             fontSize: '11px',
-            color: 'var(--cf-text-muted)',
-            marginLeft: '4px',
+            color: 'var(--lp-text-hint)',
+            letterSpacing: '0.02em',
+            position: 'absolute',
+            left: '50%',
+            transform: 'translateX(-50%)',
           }}
         >
-          cloudforge — bash
+          cloudforge
         </span>
+
+        {/* Spacer to balance the traffic lights */}
+        <div style={{ width: '50px' }} aria-hidden="true" />
       </div>
 
       {/* Terminal body */}
       <div
         style={{
-          padding: '16px',
+          padding: '20px 24px 24px',
           minHeight: '200px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '4px',
+          gap: '3px',
         }}
       >
         <AnimatePresence>
-          {(LINES.slice(0, visibleCount) as readonly Line[]).map((line, i) => (
+          {LINES.slice(0, visibleCount).map((line, i) => (
             <motion.div
               key={`${i}-${line.text}`}
-              initial={{ opacity: 0, x: -6 }}
+              initial={{ opacity: 0, x: -4 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
               style={{
                 fontFamily: 'var(--font-jetbrains-mono), monospace',
-                fontSize: '12px',
-                color: line.color,
-                fontWeight: 'bold' in line && line.bold ? 500 : 400,
-                lineHeight: '1.6',
+                fontSize: '13px',
+                lineHeight: '1.7',
+                color: line.color || 'transparent',
+                letterSpacing: '0.01em',
               }}
             >
-              {line.text}
+              {line.text || '\u00A0'}
             </motion.div>
           ))}
         </AnimatePresence>
 
-        {/* Blinking cursor */}
-        {visibleCount < LINES.length && (
+        {/* Blinking cursor — visible only while still typing */}
+        {!done && visibleCount < LINES.length && (
           <span
             style={{
               fontFamily: 'var(--font-jetbrains-mono), monospace',
-              fontSize: '12px',
-              color: 'var(--cf-green)',
+              fontSize: '13px',
+              color: 'var(--lp-accent)',
               animation: 'blink 1s step-end infinite',
+              lineHeight: '1.7',
             }}
+            aria-hidden="true"
           >
-            ▌
+            ▋
           </span>
         )}
       </div>
