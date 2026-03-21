@@ -1,0 +1,212 @@
+from __future__ import annotations
+
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Command, interrupt
+
+from app.agents.architecture_planner.state import (
+    ArchitecturePlannerState,
+    ClarifyingQuestion,
+    ServiceEntry,
+    ComplianceGap,
+)
+from app.agents.architecture_planner.prompts import render_prompt
+from app.agents.architecture_planner.query_agent import (
+    build_info_gathering_subgraph,
+    build_query_subgraph,
+)
+from app.agents.architecture_planner.service_discovery_agent import make_service_discovery_node
+from app.agents.architecture_planner.architecture_agent import make_architecture_node
+from app.agents.architecture_planner.compliance_agent import make_compliance_node
+from app.agents.architecture_planner.eval_agent import make_eval_node
+
+
+# ---------------------------------------------------------------------------
+# Accept subgraph
+# ---------------------------------------------------------------------------
+
+
+def make_present_architecture_node():
+    """Factory for present_architecture_node (no LLM needed — uses interrupt)."""
+
+    def present_architecture_node(state: ArchitecturePlannerState) -> Command:
+        # Auto-accept when max iterations reached
+        if state["accept_iteration_count"] >= 3:
+            return Command(
+                update={
+                    "user_accepted": True,
+                    "accept_iteration_count": state["accept_iteration_count"],
+                    "error_message": "Max accept/change iterations (3) reached. Auto-accepting best architecture.",
+                    "current_node": "present_architecture",
+                },
+                goto=END,
+            )
+
+        # Serialize diagram for the template (use by_alias=True so "from" key is correct)
+        diagram_dict = (
+            state["architecture_diagram"].model_dump(by_alias=True)
+            if state["architecture_diagram"]
+            else {"nodes": [], "connections": []}
+        )
+
+        summary = render_prompt(
+            "accept_review",
+            architecture_diagram=diagram_dict,
+            nfr_document=state["nfr_document"],
+            component_responsibilities=state["component_responsibilities"],
+            extra_context=state["extra_context"],
+            eval_score=state["eval_score"],
+            eval_feedback=state["eval_feedback"],
+        )
+
+        # Pause for human review — resumes with Command(resume={"accepted": bool, "changes": str})
+        response = interrupt({
+            "summary": summary,
+            "iteration": state["accept_iteration_count"] + 1,
+        })
+
+        accepted = response.get("accepted", False) if isinstance(response, dict) else False
+        changes = response.get("changes", "") if isinstance(response, dict) else str(response)
+
+        if accepted:
+            return Command(
+                update={
+                    "user_accepted": True,
+                    "accept_iteration_count": state["accept_iteration_count"] + 1,
+                    "current_node": "present_architecture",
+                },
+                goto=END,
+            )
+
+        # User requested changes — reset arch loop and return to parent graph
+        return Command(
+            update={
+                "user_accepted": False,
+                "user_change_requests": changes,
+                "accept_iteration_count": state["accept_iteration_count"] + 1,
+                "arch_iteration_count": 0,  # reset so arch subgraph can run again
+                "current_node": "present_architecture",
+            },
+            goto=END,
+        )
+
+    return present_architecture_node
+
+
+def build_accept_subgraph():
+    """Compile the accept subgraph (one node, uses interrupt for human-in-the-loop)."""
+    builder = StateGraph(ArchitecturePlannerState)
+    builder.add_node("present_architecture", make_present_architecture_node())
+    builder.add_edge(START, "present_architecture")
+    return builder.compile()
+
+
+# ---------------------------------------------------------------------------
+# Arch-review subgraph (architecture → compliance → eval, loops up to 3x)
+# ---------------------------------------------------------------------------
+
+
+def build_arch_review_subgraph(llm):
+    """Compile the arch-review subgraph."""
+    builder = StateGraph(ArchitecturePlannerState)
+    builder.add_node("architecture", make_architecture_node(llm))
+    builder.add_node("compliance", make_compliance_node(llm))
+    builder.add_node("eval", make_eval_node(llm))
+    builder.add_edge(START, "architecture")
+    builder.add_edge("architecture", "compliance")
+    builder.add_edge("compliance", "eval")
+    # eval uses Command(goto="architecture"|END) internally to control the loop
+    return builder.compile()
+
+
+# ---------------------------------------------------------------------------
+# LLM factory
+# ---------------------------------------------------------------------------
+
+
+def _build_llm(model_type: str, model_name: str | None):
+    """Instantiate the chat model based on model_type."""
+    if model_type == "anthropic":
+        from langchain_anthropic import ChatAnthropic
+        return ChatAnthropic(
+            model=model_name or "claude-opus-4-6",
+            temperature=0,
+            max_tokens=8096,
+        )
+    elif model_type == "ollama":
+        from langchain_ollama import ChatOllama
+        return ChatOllama(
+            model=model_name or "llama3.1:8b",
+            temperature=0,
+        )
+    else:
+        raise ValueError(
+            f"Unknown model_type '{model_type}'. Use 'anthropic' or 'ollama'."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Parent graph
+# ---------------------------------------------------------------------------
+
+
+def _route_after_accept(state: ArchitecturePlannerState) -> str:
+    """Conditional edge: loop back to arch_review if user requested changes."""
+    if state["user_accepted"]:
+        return END
+    return "arch_review"
+
+
+def create_graph(model_type: str = "anthropic", model_name: str | None = None):
+    """
+    Build and compile the full architecture planner graph.
+
+    Args:
+        model_type: "anthropic" (default) or "ollama"
+        model_name: Override the default model name.
+                    Anthropic default: "claude-opus-4-6"
+                    Ollama default: "llama3.1:8b"
+
+    Returns:
+        A compiled LangGraph graph. Requires a thread_id in the config dict
+        when streaming (needed for interrupt() support).
+    """
+    llm = _build_llm(model_type, model_name)
+
+    # Build subgraphs
+    info_gathering = build_info_gathering_subgraph(llm)
+    query = build_query_subgraph(llm)
+    arch_review = build_arch_review_subgraph(llm)
+    accept = build_accept_subgraph()
+
+    builder = StateGraph(ArchitecturePlannerState)
+
+    # Register nodes
+    builder.add_node("info_gathering", info_gathering)
+    builder.add_node("query", query)
+    builder.add_node("service_discovery", make_service_discovery_node(llm))
+    builder.add_node("arch_review", arch_review)
+    builder.add_node("accept", accept)
+
+    # Main pipeline edges
+    builder.add_edge(START, "info_gathering")
+    builder.add_edge("info_gathering", "query")
+    builder.add_edge("query", "service_discovery")
+    builder.add_edge("service_discovery", "arch_review")
+    builder.add_edge("arch_review", "accept")
+
+    # Conditional edge: after accept, either finish or loop back for changes
+    builder.add_conditional_edges("accept", _route_after_accept)
+
+    # MemorySaver is required for interrupt() to work across subgraphs.
+    # Register custom Pydantic types to silence "Deserializing unregistered type" warnings.
+    checkpointer = MemorySaver(
+        serde=JsonPlusSerializer(
+            allowed_msgpack_modules=[ClarifyingQuestion, ServiceEntry, ComplianceGap]
+        )
+    )
+    return builder.compile(checkpointer=checkpointer)
+
+
+__all__ = ["create_graph"]
