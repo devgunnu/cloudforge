@@ -1,14 +1,5 @@
-import dynamic from 'next/dynamic';
-import CanvasSkeleton from '@/components/canvas/CanvasSkeleton';
-
-const CloudForgeApp = dynamic(
-  () => import('@/components/canvas/CloudCanvas'),
-  {
-    ssr: false,
-    loading: () => <CanvasSkeleton />,
-  }
-);
+import CanvasClientWrapper from '@/components/canvas/CanvasClientWrapper';
 
 export default function Home() {
-  return <CloudForgeApp />;
+  return <CanvasClientWrapper />;
 }
