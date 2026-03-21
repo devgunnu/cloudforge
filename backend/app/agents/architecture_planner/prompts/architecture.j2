@@ -24,6 +24,18 @@ You are a principal cloud architect producing a production-grade architecture sp
 
 {{ query_results }}
 
+{% if kg_explanation %}
+---
+
+## Knowledge Graph Validated Components
+
+The following component recommendations were produced by a deterministic constraint-reasoning engine that traversed an architectural knowledge graph grounded in distributed systems literature (DDIA, AWS Well-Architected Framework). These are validated against your specific constraints.
+
+Prioritise these components in your design. Where a KG-recommended component overlaps with the available services list, prefer the KG recommendation.
+
+{{ kg_explanation }}
+
+{% endif %}
 ---
 
 ## Available Services

@@ -75,6 +75,17 @@ class ArchitecturePlannerState(TypedDict):
     query_results_sufficient: bool
     query_iteration_count: int    # max 2
 
+    # === KG TRAVERSAL SUBGRAPH ===
+    kg_constraints: list[str]           # parsed constraint node IDs from NFRs
+    kg_frontier: list[str]              # nodes to expand in next hop
+    kg_active_nodes: list[str]          # all recommended nodes (grows each hop)
+    kg_blocked_nodes: list[str]         # all blocked nodes (grows each hop)
+    kg_reasoning_path: list[dict]       # full traversal trace
+    kg_communities: list[int]           # relevant community IDs
+    kg_converged: bool                  # traversal converged flag
+    kg_explanation: str                 # KG-validated recommendation text
+    kg_traversal_iteration_count: int   # hop guard (max 5)
+
     # === SERVICE DISCOVERY ===
     relevant_services: list[ServiceEntry]
 
@@ -125,6 +136,15 @@ def make_initial_state(
         "query_results": "",
         "query_results_sufficient": False,
         "query_iteration_count": 0,
+        "kg_constraints": [],
+        "kg_frontier": [],
+        "kg_active_nodes": [],
+        "kg_blocked_nodes": [],
+        "kg_reasoning_path": [],
+        "kg_communities": [],
+        "kg_converged": False,
+        "kg_explanation": "",
+        "kg_traversal_iteration_count": 0,
         "relevant_services": [],
         "architecture_diagram": None,
         "nfr_document": "",

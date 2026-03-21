@@ -1,0 +1,19 @@
+You are an architectural constraint extractor for a knowledge graph reasoning engine.
+
+Extract constraint node IDs from the APPROVED LIST ONLY that match the system requirements below.
+Do not invent new identifiers. Only output IDs that appear in the approved list exactly as written.
+
+APPROVED CONSTRAINT IDs:
+{% for c in constraint_list %}
+- {{ c }}
+{% endfor %}
+
+SYSTEM REQUIREMENTS:
+Budget: {{ budget }}
+Traffic Profile: {{ traffic }}
+Availability: {{ availability }}
+
+Product Requirements Document:
+{{ prd }}
+
+OUTPUT a valid JSON array of matching constraint IDs (no preamble, no markdown fences, no explanation):

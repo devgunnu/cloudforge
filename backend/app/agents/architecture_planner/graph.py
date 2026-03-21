@@ -16,6 +16,7 @@ from app.agents.architecture_planner.query_agent import (
     build_info_gathering_subgraph,
     build_query_subgraph,
 )
+from app.agents.architecture_planner.kg_traversal_agent import init_kuzu, build_kg_subgraph
 from app.agents.architecture_planner.service_discovery_agent import make_service_discovery_node
 from app.agents.architecture_planner.architecture_agent import make_architecture_node
 from app.agents.architecture_planner.compliance_agent import make_compliance_node
@@ -158,7 +159,12 @@ def _route_after_accept(state: ArchitecturePlannerState) -> str:
     return "arch_review"
 
 
-def create_graph(model_type: str = "anthropic", model_name: str | None = None):
+def create_graph(
+    model_type: str = "anthropic",
+    model_name: str | None = None,
+    graph_json_path: str | None = None,
+    community_summaries_path: str | None = None,
+):
     """
     Build and compile the full architecture planner graph.
 
@@ -167,12 +173,27 @@ def create_graph(model_type: str = "anthropic", model_name: str | None = None):
         model_name: Override the default model name.
                     Anthropic default: "claude-opus-4-6"
                     Ollama default: "llama3.1:8b"
+        graph_json_path: Path to graph.json for KG traversal.
+                         Defaults to CLOUDFORGE_GRAPH_JSON env var or "graph.json".
+                         KG traversal is silently skipped if the file does not exist.
+        community_summaries_path: Path to community_summaries.json.
+                                  Defaults to CLOUDFORGE_COMMUNITY_SUMMARIES env var
+                                  or "community_summaries.json".
 
     Returns:
         A compiled LangGraph graph. Requires a thread_id in the config dict
         when streaming (needed for interrupt() support).
     """
+    import os
     llm = _build_llm(model_type, model_name)
+
+    # KG setup — optional; gracefully skips when graph.json is absent or kuzu not installed
+    _graph_json = graph_json_path or os.environ.get("CLOUDFORGE_GRAPH_JSON", "graph.json")
+    _summaries = community_summaries_path or os.environ.get(
+        "CLOUDFORGE_COMMUNITY_SUMMARIES", "community_summaries.json"
+    )
+    conn = init_kuzu(_graph_json)
+    kg_traversal = build_kg_subgraph(llm, conn, _summaries)
 
     # Build subgraphs
     info_gathering = build_info_gathering_subgraph(llm)
@@ -185,6 +206,7 @@ def create_graph(model_type: str = "anthropic", model_name: str | None = None):
     # Register nodes
     builder.add_node("info_gathering", info_gathering)
     builder.add_node("query", query)
+    builder.add_node("kg_traversal", kg_traversal)
     builder.add_node("service_discovery", make_service_discovery_node(llm))
     builder.add_node("arch_review", arch_review)
     builder.add_node("accept", accept)
@@ -192,7 +214,8 @@ def create_graph(model_type: str = "anthropic", model_name: str | None = None):
     # Main pipeline edges
     builder.add_edge(START, "info_gathering")
     builder.add_edge("info_gathering", "query")
-    builder.add_edge("query", "service_discovery")
+    builder.add_edge("query", "kg_traversal")
+    builder.add_edge("kg_traversal", "service_discovery")
     builder.add_edge("service_discovery", "arch_review")
     builder.add_edge("arch_review", "accept")
 

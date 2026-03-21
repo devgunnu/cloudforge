@@ -35,6 +35,7 @@ def make_architecture_node(llm):
             prd=state["prd"],
             cloud_provider=state["cloud_provider"],
             query_results=state["query_results"],
+            kg_explanation=state["kg_explanation"],
             relevant_services=[s.model_dump() for s in state["relevant_services"]],
             arch_iteration_count=state["arch_iteration_count"],
             compliance_gaps=[g.model_dump() for g in state["compliance_gaps"]],
