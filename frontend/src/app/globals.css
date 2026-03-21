@@ -178,3 +178,35 @@ html, body {
 .react-flow__handle {
   transition: opacity 150ms ease;
 }
+
+/* ── Hero dot grid ─────────────────────────────────────────────── */
+.lp-hero-dotgrid {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-position: center center;
+}
+
+/* ── Animated light beam sweep ─────────────────────────────────── */
+@keyframes lp-beam-sweep {
+  0%   { transform: translateX(-120%) rotate(35deg); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateX(220%) rotate(35deg); opacity: 0; }
+}
+
+.lp-beam {
+  position: absolute;
+  top: -50%;
+  left: 0;
+  width: 25%;
+  height: 200%;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(45, 212, 191, 0.022),
+    transparent
+  );
+  animation: lp-beam-sweep 10s ease-in-out infinite;
+  pointer-events: none;
+  will-change: transform;
+}
