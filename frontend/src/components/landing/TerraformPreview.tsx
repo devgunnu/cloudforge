@@ -76,27 +76,126 @@ resource "aws_db_instance" "postgres" {
   skip_final_snapshot = true
 }`;
 
-function highlight(code: string): string {
-  return code
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(
-      /\b(provider|resource|variable|output|locals|module|data|terraform)\b/g,
-      '<span style="color:#6EAB85;font-weight:500">$1</span>'
-    )
-    .replace(
-      /"([^"]+)"/g,
-      '<span style="color:#A3C9B4">"$1"</span>'
-    )
-    .replace(
-      /\b(true|false|null)\b/g,
-      '<span style="color:#9CA3AF">$1</span>'
-    )
-    .replace(
-      /(#[^\n]*)/g,
-      '<span style="color:#4B5563">$1</span>'
-    );
+type TokenType = 'keyword' | 'string' | 'number' | 'comment' | 'punctuation' | 'plain';
+
+interface Token {
+  text: string;
+  type: TokenType;
+}
+
+const KEYWORDS = new Set([
+  'resource', 'provider', 'module', 'variable', 'output',
+  'locals', 'terraform', 'required_providers',
+]);
+
+const TOKEN_COLORS: Record<TokenType, string> = {
+  keyword:     'var(--cf-purple)',
+  string:      'var(--lp-accent)',
+  number:      '#e8a07a',
+  comment:     'var(--lp-text-hint)',
+  punctuation: 'var(--lp-text-secondary)',
+  plain:       'var(--lp-text-primary)',
+};
+
+function tokenizeLine(line: string): Token[] {
+  const tokens: Token[] = [];
+
+  // Full-line comment (after optional leading whitespace)
+  const commentIdx = line.indexOf('#');
+  if (commentIdx !== -1) {
+    // Everything before the # is non-comment; the rest is a comment
+    const before = line.slice(0, commentIdx);
+    const comment = line.slice(commentIdx);
+    if (before.length > 0) {
+      tokens.push(...tokenizeSegment(before));
+    }
+    tokens.push({ text: comment, type: 'comment' });
+    return tokens;
+  }
+
+  return tokenizeSegment(line);
+}
+
+function tokenizeSegment(segment: string): Token[] {
+  const tokens: Token[] = [];
+  let i = 0;
+
+  while (i < segment.length) {
+    const ch = segment[i];
+
+    // String literal — consume until closing unescaped quote
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < segment.length) {
+        if (segment[j] === '\\') {
+          j += 2; // skip escape sequence
+          continue;
+        }
+        if (segment[j] === '"') {
+          j++;
+          break;
+        }
+        j++;
+      }
+      tokens.push({ text: segment.slice(i, j), type: 'string' });
+      i = j;
+      continue;
+    }
+
+    // Number literal
+    if (ch >= '0' && ch <= '9') {
+      let j = i + 1;
+      while (j < segment.length && (segment[j] >= '0' && segment[j] <= '9' || segment[j] === '.')) {
+        j++;
+      }
+      tokens.push({ text: segment.slice(i, j), type: 'number' });
+      i = j;
+      continue;
+    }
+
+    // Punctuation: { } = [ ]
+    if (ch === '{' || ch === '}' || ch === '=' || ch === '[' || ch === ']') {
+      tokens.push({ text: ch, type: 'punctuation' });
+      i++;
+      continue;
+    }
+
+    // Word — identifier or keyword
+    if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_') {
+      let j = i + 1;
+      while (
+        j < segment.length &&
+        ((segment[j] >= 'a' && segment[j] <= 'z') ||
+          (segment[j] >= 'A' && segment[j] <= 'Z') ||
+          (segment[j] >= '0' && segment[j] <= '9') ||
+          segment[j] === '_' || segment[j] === '-')
+      ) {
+        j++;
+      }
+      const word = segment.slice(i, j);
+      tokens.push({ text: word, type: KEYWORDS.has(word) ? 'keyword' : 'plain' });
+      i = j;
+      continue;
+    }
+
+    // Everything else (spaces, punctuation we don't classify, etc.)
+    // Accumulate a run of "other" characters
+    let j = i + 1;
+    while (
+      j < segment.length &&
+      segment[j] !== '"' &&
+      !(segment[j] >= '0' && segment[j] <= '9') &&
+      segment[j] !== '{' && segment[j] !== '}' &&
+      segment[j] !== '=' && segment[j] !== '[' && segment[j] !== ']' &&
+      !((segment[j] >= 'a' && segment[j] <= 'z') || (segment[j] >= 'A' && segment[j] <= 'Z') || segment[j] === '_')
+    ) {
+      j++;
+    }
+    tokens.push({ text: segment.slice(i, j), type: 'plain' });
+    i = j;
+  }
+
+  return tokens;
 }
 
 const MINI_NODES = [
@@ -312,8 +411,23 @@ export default function TerraformPreview() {
               maxHeight: '380px',
               overflowY: 'auto',
             }}
-            dangerouslySetInnerHTML={{ __html: highlight(HCL) }}
-          />
+          >
+            {HCL.split('\n').map((line, lineIdx) => (
+              <span key={lineIdx} style={{ display: 'block' }}>
+                {tokenizeLine(line).map((token, tokenIdx) => (
+                  <span
+                    key={tokenIdx}
+                    style={{
+                      color: TOKEN_COLORS[token.type],
+                      fontWeight: token.type === 'keyword' ? 500 : undefined,
+                    }}
+                  >
+                    {token.text}
+                  </span>
+                ))}
+              </span>
+            ))}
+          </pre>
         </motion.div>
       </div>
     </section>

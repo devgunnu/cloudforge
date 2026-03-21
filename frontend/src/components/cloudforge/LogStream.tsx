@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 
 interface LogLine {
@@ -72,6 +72,13 @@ export default function LogStream({ lines }: LogStreamProps) {
     if (logAreaRef.current) {
       logAreaRef.current.scrollTop = logAreaRef.current.scrollHeight;
     }
+  }, [lines]);
+
+  const latestUrgentMessage = useMemo(() => {
+    const urgentLines = lines.filter((l) => l.level === 'error' || l.level === 'warn');
+    if (urgentLines.length === 0) return '';
+    const latest = urgentLines[urgentLines.length - 1];
+    return `${latest.level.toUpperCase()}: ${latest.agent} — ${latest.message}`;
   }, [lines]);
 
   return (
@@ -222,6 +229,22 @@ export default function LogStream({ lines }: LogStreamProps) {
             </motion.div>
           );
         })}
+      </div>
+
+      {/* Visually hidden assertive region — announces error/warn logs immediately */}
+      <div
+        aria-live="assertive"
+        aria-atomic="true"
+        style={{
+          position: 'absolute',
+          width: '1px',
+          height: '1px',
+          overflow: 'hidden',
+          clip: 'rect(0,0,0,0)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {latestUrgentMessage}
       </div>
     </div>
   );

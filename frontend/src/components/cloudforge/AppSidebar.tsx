@@ -83,6 +83,9 @@ export default function AppSidebar() {
           }}
         >
           {NAV_ITEMS.map((item) => {
+            // startsWith(item.href + '/') is safe here: none of the hrefs
+            // (/dashboard, /history, /settings, /billing) is a prefix of another,
+            // so there are no false-positive matches from the prefix check.
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
             return (
               <li key={item.href}>

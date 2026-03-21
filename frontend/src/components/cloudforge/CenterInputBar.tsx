@@ -54,9 +54,8 @@ export default function CenterInputBar({ placeholder, onSend }: CenterInputBarPr
         right: 0,
         zIndex: 40,
         margin: '0 auto',
-        maxWidth: '680px',
-        width: '60%',
-        minWidth: '400px',
+        maxWidth: '720px',
+        width: '100%',
       }}
     >
       <div

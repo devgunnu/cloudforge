@@ -51,21 +51,6 @@ export default function LivePage() {
           Coming soon — live metrics, logs, and alerts for your deployed infrastructure.
         </p>
       </div>
-      <span
-        style={{
-          display: 'inline-block',
-          padding: '3px 10px',
-          background: 'var(--lp-elevated)',
-          border: '0.5px solid var(--lp-border-hover)',
-          borderRadius: '100px',
-          fontFamily: 'var(--font-jetbrains-mono), monospace',
-          fontSize: '11px',
-          color: 'var(--lp-text-hint)',
-          letterSpacing: '0.04em',
-        }}
-      >
-        stub
-      </span>
     </div>
   );
 }

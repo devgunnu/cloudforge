@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useProjectStore } from '@/store/projectStore';
 import ChatThread from '@/components/cloudforge/ChatThread';
@@ -84,6 +84,7 @@ export default function PRDPage() {
   const router = useRouter();
   const { advanceStage } = useProjectStore();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [accepting, setAccepting] = useState(false);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -138,14 +139,17 @@ export default function PRDPage() {
                   fontSize: '13px',
                   fontWeight: 500,
                   fontFamily: 'var(--font-inter), system-ui, sans-serif',
+                  opacity: accepting ? 0.7 : 1,
                 }}
+                disabled={accepting}
                 aria-label="Accept the functional plan and proceed to architecture"
                 onClick={() => {
+                  setAccepting(true);
                   advanceStage(id);
                   router.push(`/project/${id}/arch`);
                 }}
               >
-                Accept plan
+                {accepting ? 'Building...' : 'Accept plan'}
               </button>
               <button
                 className="lp-btn-ghost"

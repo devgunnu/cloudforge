@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import ProjectTabBar from '@/components/cloudforge/ProjectTabBar';
@@ -19,9 +19,11 @@ export default function ProjectShell({ children }: { children: React.ReactNode }
 
   const project = projects.find((p) => p.id === id);
 
-  // Direction tracking: 1 = forward (slide from right), -1 = backward
-  const stageIndexRef = useRef<number>(STAGE_ORDER.indexOf(currentRoute as ProjectStage));
-  const [direction, setDirection] = useState(1);
+  // Direction tracking: computed synchronously via ref, no state needed
+  const prevIndexRef = useRef<number>(STAGE_ORDER.indexOf(currentRoute as ProjectStage));
+  const currentIndex = STAGE_ORDER.indexOf(currentRoute as ProjectStage);
+  const direction = currentIndex !== -1 && currentIndex >= prevIndexRef.current ? 1 : -1;
+  if (currentIndex !== -1) prevIndexRef.current = currentIndex;
 
   // Guard: redirect if project missing or route is locked
   useEffect(() => {
@@ -35,33 +37,26 @@ export default function ProjectShell({ children }: { children: React.ReactNode }
     }
   }, [project, currentRoute, id, router]);
 
-  // Direction tracking
-  useEffect(() => {
-    const newIndex = STAGE_ORDER.indexOf(currentRoute as ProjectStage);
-    if (newIndex !== -1) {
-      setDirection(newIndex >= stageIndexRef.current ? 1 : -1);
-      stageIndexRef.current = newIndex;
-    }
-  }, [currentRoute]);
-
   // While guard is pending (project not found yet), show nothing to avoid flash
   if (!project) return null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <ProjectTabBar />
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={pathname}
-          initial={{ opacity: 0, x: direction * 24 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: direction * -24 }}
-          transition={{ duration: 0.25, ease: 'easeInOut' }}
-          style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}
-        >
-          {children}
-        </motion.div>
-      </AnimatePresence>
+      <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+        <AnimatePresence mode="sync" initial={false}>
+          <motion.div
+            key={pathname}
+            initial={{ opacity: 0, x: direction * 24 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: direction * -24 }}
+            transition={{ duration: 0.25, ease: 'easeInOut' }}
+            style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column' }}
+          >
+            {children}
+          </motion.div>
+        </AnimatePresence>
+      </div>
     </div>
   );
 }

@@ -218,3 +218,10 @@ html, body {
   pointer-events: none;
   will-change: transform;
 }
+
+/* ── Accessibility: respect reduced-motion preference ──────────── */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none;
+  }
+}

@@ -255,6 +255,32 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {/* Empty state */}
+      {projects.length === 0 && (
+        <div style={{ marginTop: '48px' }}>
+          <p
+            style={{
+              fontFamily: 'var(--font-inter), system-ui, sans-serif',
+              fontSize: '16px',
+              fontWeight: 600,
+              color: 'var(--lp-text-primary)',
+              marginBottom: '6px',
+            }}
+          >
+            No projects yet
+          </p>
+          <p
+            style={{
+              fontFamily: 'var(--font-inter), system-ui, sans-serif',
+              fontSize: '13px',
+              color: 'var(--lp-text-secondary)',
+            }}
+          >
+            Create your first project to get started.
+          </p>
+        </div>
+      )}
+
       {/* Project grid */}
       <div
         style={{

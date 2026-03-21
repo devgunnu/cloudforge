@@ -24,7 +24,6 @@ interface ArchEdge {
 interface ArchDiagramProps {
   nodes: ArchNode[];
   edges: ArchEdge[];
-  readOnly?: boolean;
 }
 
 /* ── Constants ──────────────────────────────────────────────────────────────── */
@@ -43,6 +42,20 @@ export default function ArchDiagram({ nodes, edges }: ArchDiagramProps) {
     }
     return map;
   }, [nodes]);
+
+  const ariaLabel = useMemo(() => {
+    const nodeLabels = nodes.map((n) => n.label).join(', ');
+    const edgePairs = edges
+      .map((e) => {
+        const fromLabel = nodeMap.get(e.from)?.label ?? e.from;
+        const toLabel = nodeMap.get(e.to)?.label ?? e.to;
+        return `${fromLabel} → ${toLabel}`;
+      })
+      .join(', ');
+    const nodesPart = nodeLabels ? `Architecture diagram: ${nodeLabels}.` : 'Architecture diagram.';
+    const edgesPart = edgePairs ? ` Connections: ${edgePairs}.` : '';
+    return `${nodesPart}${edgesPart}`;
+  }, [nodes, edges, nodeMap]);
 
   const layerLabels = useMemo(() => {
     const appNodes = nodes.filter((n) => n.layer === 'app');
@@ -80,7 +93,7 @@ export default function ArchDiagram({ nodes, edges }: ArchDiagramProps) {
         backgroundSize: '28px 28px',
       }}
       role="img"
-      aria-label="Architecture diagram showing application and infrastructure layers"
+      aria-label={ariaLabel}
     >
       {/* SVG edge layer */}
       <svg

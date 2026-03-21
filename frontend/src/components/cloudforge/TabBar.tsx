@@ -69,6 +69,7 @@ function TabItem({ tab, onTabClick }: { tab: Tab; onTabClick?: (id: string) => v
       disabled={isLocked}
       aria-current={tab.state === 'active' ? 'page' : undefined}
       aria-disabled={isLocked}
+      aria-label={isLocked ? `${tab.label} — locked, complete previous steps to unlock` : undefined}
       tabIndex={isLocked ? -1 : 0}
       onClick={tab.state === 'done' && onTabClick ? () => onTabClick(tab.id) : undefined}
     >

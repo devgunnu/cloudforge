@@ -8,32 +8,9 @@ import CenterInputBar from '@/components/cloudforge/CenterInputBar';
 import ArchDiagram from '@/components/cloudforge/ArchDiagram';
 import FileTree from '@/components/cloudforge/FileTree';
 import ToggleGroup from '@/components/cloudforge/ToggleGroup';
+import type { ArchNode, ArchEdge, FileNode } from '@/lib/mock-data';
 
-/* ── Types (inline — no external imports) ────────────────────────────────────── */
-
-interface ArchNode {
-  id: string;
-  label: string;
-  sublabel?: string;
-  layer: 'app' | 'infra';
-  x: number;
-  y: number;
-  isNew?: boolean;
-  isActive?: boolean;
-}
-
-interface ArchEdge {
-  from: string;
-  to: string;
-}
-
-interface FileNode {
-  name: string;
-  type: 'file' | 'dir';
-  status?: 'done' | 'writing' | 'pending';
-  category?: 'infra' | 'src' | 'config';
-  children?: FileNode[];
-}
+/* ── Local types ─────────────────────────────────────────────────────────────── */
 
 interface MiniMessage {
   id: string;
@@ -138,9 +115,11 @@ export default function ArchPage() {
   const router = useRouter();
   const { advanceStage } = useProjectStore();
   const [activePanel, setActivePanel] = useState('Chat');
+  const [accepting, setAccepting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const handleAccept = () => {
+    setAccepting(true);
     advanceStage(id);
     router.push(`/project/${id}/build`);
   };
@@ -188,7 +167,7 @@ export default function ArchPage() {
 
           {/* Panel content */}
           {activePanel === 'Chat' ? (
-            <ChatPanel scrollRef={scrollRef} onAccept={handleAccept} />
+            <ChatPanel scrollRef={scrollRef} onAccept={handleAccept} accepting={accepting} />
           ) : (
             <div style={{ flex: 1, overflowY: 'auto' }}>
               <FileTree nodes={MOCK_FILES} />
@@ -245,7 +224,7 @@ export default function ArchPage() {
 
 /* ── Chat panel ──────────────────────────────────────────────────────────────── */
 
-function ChatPanel({ scrollRef, onAccept }: { scrollRef: React.RefObject<HTMLDivElement | null>; onAccept: () => void }) {
+function ChatPanel({ scrollRef, onAccept, accepting }: { scrollRef: React.RefObject<HTMLDivElement | null>; onAccept: () => void; accepting: boolean }) {
   return (
     <div
       style={{
@@ -293,12 +272,14 @@ function ChatPanel({ scrollRef, onAccept }: { scrollRef: React.RefObject<HTMLDiv
             fontSize: '13px',
             fontWeight: 500,
             fontFamily: 'var(--font-inter), system-ui, sans-serif',
-            cursor: 'pointer',
+            cursor: accepting ? 'default' : 'pointer',
             border: 'none',
+            opacity: accepting ? 0.7 : 1,
           }}
+          disabled={accepting}
           onClick={onAccept}
         >
-          Accept + build
+          {accepting ? 'Building...' : 'Accept + build'}
         </button>
         <button
           type="button"
