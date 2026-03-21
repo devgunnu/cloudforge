@@ -1,0 +1,31 @@
+Generate Terraform HCL for the following cloud architecture:
+
+Cloud Provider: {{ cloud_provider | upper }}
+
+## Services ({{ services | length }} total)
+{% for service in services %}
+- [{{ service.service_type | upper }}] {{ service.label }} (id: `{{ service.id }}`)
+  {%- if service.config %}
+  Config: {{ service.config | tojson }}
+  {%- endif %}
+{% endfor %}
+
+{% if connections %}
+## Connections / Data Flow
+{% for conn in connections %}
+- `{{ conn.source }}` --[{{ conn.relationship }}]--> `{{ conn.target }}`
+{% endfor %}
+{% else %}
+## Connections
+No explicit connections defined — resources are standalone.
+{% endif %}
+
+{% if has_configs %}
+## Detailed Service Configurations
+{% for service in services %}
+{% if service.config %}
+### {{ service.id }} ({{ service.service_type }})
+{{ service.config | tojson(indent=2) }}
+{% endif %}
+{% endfor %}
+{% endif %}
