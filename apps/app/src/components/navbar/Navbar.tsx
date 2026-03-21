@@ -114,6 +114,24 @@ export default function Navbar() {
           <span style={{ animation: 'blink 1s step-end infinite' }}>_</span>
         </div>
 
+        {/* Back to landing */}
+        <a
+          href="/"
+          style={{
+            fontFamily: 'var(--font-jetbrains-mono), monospace',
+            fontSize: '11px',
+            color: 'var(--cf-text-hint)',
+            textDecoration: 'none',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            transition: 'color 150ms ease',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--cf-text-muted)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--cf-text-hint)'; }}
+        >
+          ← home
+        </a>
+
         {/* Spacer */}
         <div style={{ flex: 1 }} />
 

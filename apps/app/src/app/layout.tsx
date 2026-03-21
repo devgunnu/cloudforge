@@ -13,8 +13,8 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'CloudForge — Visual AWS IaC Builder',
-  description: 'Drag. Connect. Deploy. Build AWS infrastructure visually.',
+  title: 'CloudForge',
+  description: 'Visual AWS Infrastructure-as-Code generator powered by Claude AI',
 };
 
 export default function RootLayout({
