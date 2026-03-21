@@ -141,9 +141,15 @@ def parse_input_node(state: AgentState) -> dict[str, Any]:
             )
         )
 
-    # Build task_list: one code_gen + one test_gen per service
+    # Build task_list: one code_gen + one test_gen per service that has application code.
+    # Pure-infrastructure services (s3, rds, dynamodb, vpc, etc.) that are not in
+    # SERVICE_LANGUAGE_MAP and have no explicit language override are skipped — they
+    # produce only Terraform, not application code.
     task_list: list[TaskItem] = []
     for svc in services:
+        has_code = svc["service_type"] in SERVICE_LANGUAGE_MAP or svc["id"] in lang_overrides
+        if not has_code:
+            continue
         lang = _infer_language(svc["service_type"], lang_overrides, svc["id"])
         task_list.append(
             TaskItem(
