@@ -150,13 +150,13 @@ def _run_code_gen(
                 CodeError(
                     service_id=service_id,
                     task_type="code_gen",
-                    file=f"services/{service_id}/handler.{ext}",
+                    file=f"services/{service_id}/index.{ext}",
                     errors=errors,
                 )
             )
             return
 
-        file_path = f"services/{service_id}/handler.{ext}"
+        file_path = f"services/{service_id}/index.{ext}"
         ctx.code_files[file_path] = code
         ctx.set_task_status(task["task_id"], "done")
         logger.info("code_gen OK: %s", file_path)
@@ -167,7 +167,7 @@ def _run_code_gen(
             CodeError(
                 service_id=service_id,
                 task_type="code_gen",
-                file=f"services/{service_id}/handler.{ext}",
+                file=f"services/{service_id}/index.{ext}",
                 errors=[error_msg],
             )
         )
@@ -186,7 +186,7 @@ def _run_test_gen(
     language = task["language"]
     ext = EXT_MAP.get(language, language)
 
-    code_path = f"services/{service_id}/handler.{ext}"
+    code_path = f"services/{service_id}/index.{ext}"
     source_code = ctx.code_files.get(code_path, "")
 
     ctx.set_task_status(task["task_id"], "in_progress")

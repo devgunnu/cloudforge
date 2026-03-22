@@ -178,6 +178,7 @@ def _planning_mode(state: AgentState) -> dict[str, Any]:
     return {
         "api_contracts": api_contracts,
         "task_groups": task_groups,
+        "task_list": task_list,
         "manager_plan_summary": plan_summary,
         "current_phase": "orchestration",
     }

@@ -55,7 +55,7 @@ The following Terraform resources are provisioned for this service — use the r
 {% endif %}
 
 ## Task
-Generate the handler/entry point file: `services/{{ service_id }}/handler.{{ ext }}`
+Generate the handler/entry point file: `services/{{ service_id }}/index.{{ ext }}`
 
 {% if service_type == "lambda" %}
 The handler must export a function with signature: `def handler(event, context)` (Python) or `export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult>` (TypeScript).

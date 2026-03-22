@@ -1,0 +1,16 @@
+Generate the frontend file: {{ file_path }}
+
+Project: {{ project_name }}
+
+Backend API endpoints available (from API Gateway / Lambda):
+{{ api_endpoints_json }}
+
+Full architecture:
+{{ services_json }}
+
+Connections:
+{% for conn in connections %}
+- {{ conn.source }} --[{{ conn.relationship }}]--> {{ conn.target }}
+{% endfor %}
+
+Generate the complete {{ file_path }} component. Output ONLY the code.

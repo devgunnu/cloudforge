@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
+import uuid
 from typing import Any, Literal, Union
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -13,8 +14,12 @@ from app.agents.agent3.config import MAX_CODEGEN_WORKERS
 from app.agents.agent3.nodes.assembler import assembler_node, error_handler_node
 from app.agents.agent3.nodes.codegen_collector import codegen_collector_node
 from app.agents.agent3.nodes.codegen_worker import codegen_worker_node
+from app.agents.agent3.nodes.completeness_checker import completeness_checker_node
+from app.agents.agent3.nodes.frontend_codegen_worker import frontend_codegen_worker_node
+from app.agents.agent3.nodes.infra_codegen_worker import infra_codegen_worker_node
 from app.agents.agent3.nodes.manager_agent import manager_agent_node
 from app.agents.agent3.nodes.parse_input import parse_input_node
+from app.agents.agent3.nodes.scaffold_node import scaffold_node
 from app.agents.agent3.nodes.test_orchestrator import test_orchestrator_node
 from app.agents.agent3.nodes.tf_generator import tf_generator_node
 from app.agents.agent3.state import AgentState, CodegenWorkerState, TaskGroup
@@ -149,8 +154,8 @@ def _build_worker_state(state: AgentState, group: TaskGroup) -> CodegenWorkerSta
 # ---------------------------------------------------------------------------
 
 
-def _route_after_parsing(state: AgentState) -> Literal["tf_generator", "error_handler"]:
-    return "error_handler" if state.get("current_phase") == "error" else "tf_generator"
+def _route_after_parsing(state: AgentState) -> Literal["scaffold_node", "error_handler"]:
+    return "error_handler" if state.get("current_phase") == "error" else "scaffold_node"
 
 
 def _route_after_tf_generation(state: AgentState) -> Literal["tf_validation_loop", "error_handler"]:
@@ -175,7 +180,8 @@ def _route_after_manager(
     """Route after manager agent: fan-out to workers, or proceed to tests.
 
     - Planning mode returns task_groups + current_phase='orchestration'
-      → dispatch workers via Send()
+      → dispatch codegen_worker, infra_codegen_worker, and frontend_codegen_worker
+        sends in parallel
     - Review mode (retry) returns new task_groups + clears worker_results
       → dispatch workers again
     - Review mode (proceed) returns current_phase='testing'
@@ -188,11 +194,59 @@ def _route_after_manager(
 
     if phase == "orchestration":
         task_groups = state.get("task_groups") or []
+        services = state.get("services") or []
+        connections = state.get("connections") or []
+        project_name = state.get("project_name") or "cloudforge-app"
+        file_manifest = state.get("file_manifest") or []
+
+        sends: list[Send] = []
+
+        # Fan-out application codegen workers (one per task group, capped)
         if task_groups:
-            sends = [
+            sends.extend(
                 Send("codegen_worker", _build_worker_state(state, group))
                 for group in task_groups[:MAX_CODEGEN_WORKERS]
-            ]
+            )
+
+        # Fan-out one infra_codegen_worker per CDK stack file (from file_manifest)
+        for entry in file_manifest:
+            if entry["fill_strategy"] == "llm_cdk":
+                sends.append(
+                    Send("infra_codegen_worker", {
+                        "infra_task": {
+                            "task_id": uuid.uuid4().hex[:8],
+                            "service_id": entry["path"],
+                            "task_type": "infra_gen",
+                            "language": "typescript",
+                            "status": "pending",
+                            "retry_count": 0,
+                            "error_message": None,
+                        },
+                        "services": services,
+                        "connections": connections,
+                        "project_name": project_name,
+                    })
+                )
+            elif entry["fill_strategy"] == "llm_frontend":
+                sends.append(
+                    Send("frontend_codegen_worker", {
+                        "frontend_task": {
+                            "task_id": uuid.uuid4().hex[:8],
+                            "service_id": entry["path"],
+                            "task_type": "frontend_gen",
+                            "language": "typescript",
+                            "status": "pending",
+                            "retry_count": 0,
+                            "error_message": None,
+                        },
+                        "services": services,
+                        "connections": connections,
+                        "project_name": project_name,
+                        "api_endpoints": [],
+                    })
+                )
+
+        if sends:
             return sends
 
     # Fallback: no tasks to generate, skip to assembler
@@ -208,12 +262,14 @@ def compile_graph(checkpointer=None):
     """Compile and return the top-level agent3 StateGraph.
 
     Graph topology:
-        parse_input → tf_generator → tf_validation_loop
+        parse_input → scaffold_node → tf_generator → tf_validation_loop
         → manager_agent (plan)
-            ├── Send → codegen_worker_1 ─┐
-            ├── Send → codegen_worker_2 ─┼→ codegen_collector → manager_agent (review)
-            └── Send → codegen_worker_3 ─┘
-        → test_orchestrator → assembler
+            ├── Send → codegen_worker_1        ─┐
+            ├── Send → codegen_worker_2        ─┤
+            ├── Send → codegen_worker_3        ─┼→ codegen_collector → manager_agent (review)
+            ├── Send → infra_codegen_worker_1  ─┤
+            └── Send → frontend_codegen_worker ─┘
+        → test_orchestrator → completeness_checker → assembler
 
     The manager_agent ↔ codegen_collector form a loop (bounded by
     MANAGER_MAX_REVIEW_ITERATIONS).  On each review the manager either
@@ -227,12 +283,16 @@ def compile_graph(checkpointer=None):
 
     # --- Nodes ---
     builder.add_node("parse_input", parse_input_node)
+    builder.add_node("scaffold_node", scaffold_node)
     builder.add_node("tf_generator", tf_generator_node)
     builder.add_node("tf_validation_loop", tf_validation_node)
     builder.add_node("manager_agent", manager_agent_node)
     builder.add_node("codegen_worker", codegen_worker_node)
+    builder.add_node("infra_codegen_worker", infra_codegen_worker_node)
+    builder.add_node("frontend_codegen_worker", frontend_codegen_worker_node)
     builder.add_node("codegen_collector", codegen_collector_node)
     builder.add_node("test_orchestrator", test_orchestrator_node)
+    builder.add_node("completeness_checker", completeness_checker_node)
     builder.add_node("assembler", assembler_node)
     builder.add_node("error_handler", error_handler_node)
 
@@ -242,8 +302,10 @@ def compile_graph(checkpointer=None):
     builder.add_conditional_edges(
         "parse_input",
         _route_after_parsing,
-        {"tf_generator": "tf_generator", "error_handler": "error_handler"},
+        {"scaffold_node": "scaffold_node", "error_handler": "error_handler"},
     )
+
+    builder.add_edge("scaffold_node", "tf_generator")
 
     builder.add_conditional_edges(
         "tf_generator",
@@ -265,17 +327,20 @@ def compile_graph(checkpointer=None):
     builder.add_conditional_edges(
         "manager_agent",
         _route_after_manager,
-        ["codegen_worker", "test_orchestrator", "assembler"],
+        ["codegen_worker", "infra_codegen_worker", "frontend_codegen_worker", "test_orchestrator", "assembler"],
     )
 
-    # Workers → collector (fan-in after all Send targets complete)
+    # All worker types → collector (fan-in after all Send targets complete)
     builder.add_edge("codegen_worker", "codegen_collector")
+    builder.add_edge("infra_codegen_worker", "codegen_collector")
+    builder.add_edge("frontend_codegen_worker", "codegen_collector")
 
     # Collector → manager (review loop)
     builder.add_edge("codegen_collector", "manager_agent")
 
-    # Test orchestrator → assembler
-    builder.add_edge("test_orchestrator", "assembler")
+    # Test orchestrator → completeness_checker → assembler
+    builder.add_edge("test_orchestrator", "completeness_checker")
+    builder.add_edge("completeness_checker", "assembler")
 
     # Terminal nodes
     builder.add_edge("assembler", END)

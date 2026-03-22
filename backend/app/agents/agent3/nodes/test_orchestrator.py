@@ -137,7 +137,7 @@ def test_orchestrator_node(state: AgentState) -> dict[str, Any]:
 
         language = test_task["language"]
         ext = EXT_MAP.get(language, language)
-        code_path = f"services/{service_id}/handler.{ext}"
+        code_path = f"services/{service_id}/index.{ext}"
         test_path = f"services/{service_id}/test_handler.{ext}"
 
         # --- Check that code_gen completed successfully ---

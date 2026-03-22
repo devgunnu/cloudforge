@@ -132,7 +132,7 @@ def codegen_worker_node(state: CodegenWorkerState) -> dict[str, Any]:
                     CodeError(
                         service_id=service_id,
                         task_type="code_gen",
-                        file=f"services/{service_id}/handler.{ext}",
+                        file=f"services/{service_id}/index.{ext}",
                         errors=errors,
                     )
                 )
@@ -150,7 +150,7 @@ def codegen_worker_node(state: CodegenWorkerState) -> dict[str, Any]:
                 logger.warning("code_gen FAILED for %s (group %s): %s", service_id, group_id, error_msg)
                 continue
 
-            file_path = f"services/{service_id}/handler.{ext}"
+            file_path = f"services/{service_id}/index.{ext}"
             code_files[file_path] = code
             completed_tasks.append(
                 TaskItem(
@@ -171,7 +171,7 @@ def codegen_worker_node(state: CodegenWorkerState) -> dict[str, Any]:
                 CodeError(
                     service_id=service_id,
                     task_type="code_gen",
-                    file=f"services/{service_id}/handler.{ext}",
+                    file=f"services/{service_id}/index.{ext}",
                     errors=[error_msg],
                 )
             )

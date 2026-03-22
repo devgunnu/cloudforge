@@ -9,7 +9,7 @@ from app.agents.agent3.config import EXT_MAP
 from app.agents.agent3.llm import get_default_llm
 from app.agents.agent3.prompts.code_prompts import code_generation_system, code_generation_user
 from app.agents.agent3.state import CodeGenState
-from app.agents.agent3.utils import strip_code_fences
+from app.agents.agent3.utils import strip_code_fences, strip_think_tags
 
 
 def code_generator_node(state: CodeGenState) -> dict[str, Any]:
@@ -51,7 +51,14 @@ def code_generator_node(state: CodeGenState) -> dict[str, Any]:
         response = get_default_llm().invoke(
             [SystemMessage(content=system_msg), HumanMessage(content=user_msg)]
         )
-        code = strip_code_fences(response.content)
+        # Strip <think>...</think> chain-of-thought blocks first (Groq 8b), then
+        # extract from fenced code blocks. If no fence is found, use the full
+        # stripped response as the code.
+        raw = strip_think_tags(response.content)
+        code = strip_code_fences(raw)
+        if not code.strip():
+            # Last resort: take raw post-think content directly
+            code = raw.strip()
         if not code.strip():
             return {"syntax_errors": ["Code generator returned empty output"]}
         return {"generated_code": code}

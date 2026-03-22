@@ -13,6 +13,7 @@ def _count_tasks(task_list: list, status: str) -> int:
 def assembler_node(state: AgentState) -> dict[str, Any]:
     """Merge all generated artifacts into the final output dict."""
     artifacts: dict[str, str] = {}
+    artifacts.update(state.get("scaffold_files") or {})  # template files have lowest priority
     artifacts.update(state.get("tf_files") or {})
     artifacts.update(state.get("code_files") or {})
     artifacts.update(state.get("test_files") or {})
@@ -45,6 +46,7 @@ def assembler_node(state: AgentState) -> dict[str, Any]:
 def error_handler_node(state: AgentState) -> dict[str, Any]:
     """Collect whatever partial artifacts exist and surface pipeline errors."""
     artifacts: dict[str, str] = {}
+    artifacts.update(state.get("scaffold_files") or {})  # template files have lowest priority
     artifacts.update(state.get("tf_files") or {})
     artifacts.update(state.get("code_files") or {})
     artifacts.update(state.get("test_files") or {})

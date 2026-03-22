@@ -20,7 +20,7 @@ def code_validator_node(state: CodeGenState) -> dict[str, Any]:
         filename = f"services/{service_id}/test_handler.{ext}"
     else:
         code = state.get("generated_code") or ""
-        filename = f"services/{service_id}/handler.{ext}"
+        filename = f"services/{service_id}/index.{ext}"
 
     if not code:
         return {"syntax_errors": ["No code to validate"]}

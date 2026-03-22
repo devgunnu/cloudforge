@@ -25,10 +25,19 @@ class Connection(TypedDict):
     relationship: str  # "triggers", "reads", "writes", "routes_to", "connects_to"
 
 
+class FileManifestEntry(TypedDict):
+    path: str
+    fill_strategy: str   # "template" | "llm_handler" | "llm_cdk" | "llm_frontend" | "llm_java" | "llm_test"
+    language: str
+    service_id: str | None
+    required: bool
+    description: str
+
+
 class TaskItem(TypedDict):
     task_id: str
     service_id: str
-    task_type: Literal["code_gen", "test_gen"]
+    task_type: Literal["code_gen", "test_gen", "infra_gen", "frontend_gen"]
     language: str  # "python", "typescript", "java", etc.
     status: Literal["pending", "in_progress", "done", "failed"]
     retry_count: int
@@ -116,7 +125,7 @@ class AgentState(TypedDict):
     cloud_provider: str
 
     # Terraform phase
-    tf_files: dict[str, str]  # filename -> HCL content
+    tf_files: Annotated[dict[str, str], lambda a, b: {**a, **b}]  # filename -> HCL content
     tf_validation_results: Annotated[list[ValidationResult], add]
     tf_fix_attempts: int
     tf_max_retries: int
@@ -141,9 +150,15 @@ class AgentState(TypedDict):
     test_files: dict[str, str]
     code_errors: Annotated[list[CodeError], add]  # append-only error log
 
+    # Scaffold phase output
+    scaffold_files: dict[str, str]          # path -> content (template-generated files)
+    file_manifest: list[FileManifestEntry]  # full project file manifest
+    project_name: str
+
     # Pipeline control
     current_phase: Literal[
         "parsing",
+        "scaffolding",
         "tf_generation",
         "tf_validation",
         "planning",

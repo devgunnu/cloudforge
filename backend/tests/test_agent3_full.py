@@ -200,10 +200,11 @@ def test_single_lambda(graph) -> bool:
         passed &= _assert("aws_lambda" in main_tf.lower() or "lambda" in main_tf.lower(),
                            "main.tf references lambda")
 
-    handler = next((v for k, v in artifacts.items() if "handler.py" in k), "")
+    # Lambda handler is now index.py (not handler.py) per design doc
+    handler = next((v for k, v in artifacts.items() if k.startswith("services/") and k.endswith("index.py")), "")
     if handler:
-        passed &= _assert(len(handler.strip()) > 50, "handler.py has meaningful content")
-        _info(f"handler.py first line: {handler.splitlines()[0] if handler else '(empty)'}")
+        passed &= _assert(len(handler.strip()) > 50, "index.py has meaningful content")
+        _info(f"index.py first line: {handler.splitlines()[0] if handler else '(empty)'}")
 
     for name in sorted(artifacts):
         _dump_artifact(name, artifacts[name], max_lines=20)
@@ -491,9 +492,16 @@ def test_multiple_services_no_code_gen(graph) -> bool:
     passed &= _assert("s3" in tf_content or "bucket" in tf_content, "TF covers S3")
     passed &= _assert("rds" in tf_content or "db_instance" in tf_content or "postgres" in tf_content, "TF covers RDS")
 
-    # After the fix, infra-only services have no code tasks at all
-    code_files = [k for k in artifacts if k.endswith(".py") or k.endswith(".ts")]
-    passed &= _assert(len(code_files) == 0, f"no code files for infra-only services (got {code_files})")
+    # Infra-only services must not produce Lambda handler files under services/.
+    # Infrastructure scaffold files (infrastructure/*.ts) ARE expected and correct.
+    handler_files = [
+        k for k in artifacts
+        if k.startswith("services/") and (k.endswith(".py") or k.endswith(".ts"))
+    ]
+    passed &= _assert(
+        len(handler_files) == 0,
+        f"no Lambda handler files under services/ for infra-only services (got {handler_files})"
+    )
     meta = result.get("generation_metadata") or {}
     _info(f"Artifact keys: {sorted(artifacts.keys())}")
     _info(f"tasks_done={meta.get('tasks_done')}/{meta.get('tasks_total')}")

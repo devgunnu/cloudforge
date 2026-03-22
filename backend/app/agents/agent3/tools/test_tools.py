@@ -26,10 +26,10 @@ def run_python_tests(
             tmp = Path(tmpdir)
 
             # Write the service module
-            (tmp / "handler.py").write_text(service_code, encoding="utf-8")
+            (tmp / "index.py").write_text(service_code, encoding="utf-8")
 
             # Write the test module
-            (tmp / "test_handler.py").write_text(test_code, encoding="utf-8")
+            (tmp / "test_index.py").write_text(test_code, encoding="utf-8")
 
             # Minimal conftest so imports resolve within the temp dir
             (tmp / "conftest.py").write_text(
@@ -43,7 +43,7 @@ def run_python_tests(
                     "python",
                     "-m",
                     "pytest",
-                    "test_handler.py",
+                    "test_index.py",
                     "-v",
                     "--tb=short",
                     "--no-header",
@@ -99,10 +99,10 @@ def run_typescript_tests(
             tmp = Path(tmpdir)
 
             # Write the service module
-            (tmp / "handler.ts").write_text(service_code, encoding="utf-8")
+            (tmp / "index.ts").write_text(service_code, encoding="utf-8")
 
             # Write the test module
-            (tmp / "handler.test.ts").write_text(test_code, encoding="utf-8")
+            (tmp / "index.test.ts").write_text(test_code, encoding="utf-8")
 
             # Minimal tsconfig for ts-jest
             tsconfig = {

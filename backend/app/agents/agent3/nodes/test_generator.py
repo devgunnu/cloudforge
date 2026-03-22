@@ -9,7 +9,7 @@ from app.agents.agent3.config import EXT_MAP
 from app.agents.agent3.llm import get_default_llm
 from app.agents.agent3.prompts.test_prompts import test_generation_system, test_generation_user
 from app.agents.agent3.state import CodeGenState
-from app.agents.agent3.utils import strip_code_fences
+from app.agents.agent3.utils import strip_code_fences, strip_think_tags
 
 
 def test_generator_node(state: CodeGenState) -> dict[str, Any]:
@@ -52,7 +52,10 @@ def test_generator_node(state: CodeGenState) -> dict[str, Any]:
         response = get_default_llm().invoke(
             [SystemMessage(content=system_msg), HumanMessage(content=user_msg)]
         )
-        tests = strip_code_fences(response.content)
+        raw = strip_think_tags(response.content)
+        tests = strip_code_fences(raw)
+        if not tests.strip():
+            tests = raw.strip()
         if not tests.strip():
             return {"syntax_errors": ["Test generator returned empty output"]}
         return {"generated_tests": tests}

@@ -41,7 +41,47 @@ SUPPORTED_SERVICE_TYPES = [
     "kinesis",
     "glue",
     "step_functions",
+    "amplify",
 ]
+
+# ---------------------------------------------------------------------------
+# Scaffold / language resolution
+# ---------------------------------------------------------------------------
+
+LAMBDA_SERVICE_TYPES: frozenset[str] = frozenset(
+    {"lambda", "api_gateway", "step_functions", "glue"}
+)
+
+JAVA_REQUIRED_SERVICES: frozenset[str] = frozenset({"kinesis"})
+
+AMPLIFY_TRIGGER_SERVICE_TYPES: frozenset[str] = frozenset({"amplify"})
+
+# Lambda features that mandate a specific runtime
+RUNTIME_FEATURE_REQUIREMENTS: dict[str, str] = {
+    "response_streaming": "typescript",
+    "websocket_streaming": "typescript",
+    "snapstart": "java",
+    "kinesis_kcl": "java",
+}
+
+# Maps service_type -> which CDK stack it belongs to
+STACK_ASSIGNMENT: dict[str, str] = {
+    "vpc": "network-stack",
+    "rds": "data-stack",
+    "dynamodb": "data-stack",
+    "s3": "data-stack",
+    "elasticache": "data-stack",
+    "kinesis": "streaming-stack",
+    "glue": "streaming-stack",
+    "lambda": "api-stack",
+    "api_gateway": "api-stack",
+    "sns": "api-stack",
+    "sqs": "api-stack",
+    "step_functions": "api-stack",
+    "ecs": "api-stack",
+    "ec2": "api-stack",
+    "amplify": "frontend-stack",
+}
 
 # Default language for generated application code per service type
 SERVICE_LANGUAGE_MAP: dict[str, str] = {

@@ -21,9 +21,10 @@ class Settings(BaseSettings):
     arch_model_type: str = "ollama"
     arch_model_name: str = "llama3.1:8b"
 
-    # Agent 3 — Terraform / Code Generator LLM (always Ollama)
-    agent3_model: str = "qwen3.5"        # primary model for heavy tasks
-    agent3_fast_model: str = "qwen3.5"   # lighter tasks (code fixing, test gen)
+    # Agent 3 — Code Generator LLM (Groq)
+    groq_api_key: str = ""
+    agent3_model: str = "llama-3.1-8b-instant"
+    agent3_fast_model: str = "llama-3.1-8b-instant"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
