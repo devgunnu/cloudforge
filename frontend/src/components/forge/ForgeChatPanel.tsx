@@ -544,6 +544,50 @@ function MessageBubble({
   );
 }
 
+// ── Typing indicator ──────────────────────────────────────────────────────────
+
+function TypingIndicator() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 4 }}
+      transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        marginBottom: '10px',
+      }}
+    >
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '4px',
+          background: 'var(--lp-elevated)',
+          border: '0.5px solid var(--lp-border)',
+          borderRadius: '10px 10px 10px 3px',
+          padding: '8px 12px',
+        }}
+      >
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            style={{
+              width: '5px',
+              height: '5px',
+              borderRadius: '50%',
+              background: 'var(--lp-text-hint)',
+              display: 'block',
+              animation: `forgeWaveDot 1.2s ease-in-out ${i * 0.18}s infinite`,
+            }}
+          />
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
 // ── File tree (Files tab) ─────────────────────────────────────────────────────
 
 interface FileTreeDir {
@@ -764,6 +808,7 @@ function InputBar({
   const { accessToken } = useAuthStore();
   const [value, setValue] = useState('');
   const [sending, setSending] = useState(false);
+  const isProcessing = sending || stageStatus[stage] === 'processing';
   const [provider, setProvider] = useState('aws');
   const abortRef = useRef<AbortController | null>(null);
   const providerRef = useRef(provider);
@@ -866,7 +911,6 @@ function InputBar({
           if (event.type === 'constraint' && event.chip) {
             const chip = event.chip as ConstraintChip;
             chips.push(chip);
-            addChatMessage(stage, { id: `chip-${chip.id}-${Date.now()}`, role: 'agent', content: '', chips: [chip] });
           } else if (event.type === 'clarification_needed') {
             let qWithOpts = (event.questions_with_options as ClarificationQuestion[]) ?? [];
             const questions = (event.questions as string[]) ?? [];
@@ -1069,8 +1113,8 @@ function InputBar({
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKey}
-          placeholder={sending ? 'Agent is responding…' : PLACEHOLDER[stage]}
-          disabled={sending}
+          placeholder={isProcessing ? 'Agent is responding…' : PLACEHOLDER[stage]}
+          disabled={isProcessing}
           rows={1}
           style={{
             flex: 1,
@@ -1086,7 +1130,7 @@ function InputBar({
             lineHeight: 1.5,
             maxHeight: '80px',
             overflow: 'auto',
-            opacity: sending ? 0.5 : 1,
+            opacity: isProcessing ? 0.5 : 1,
           }}
           aria-label="Message input"
         />
@@ -1095,7 +1139,7 @@ function InputBar({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={sending}
+          disabled={isProcessing}
           style={{
             width: '30px',
             height: '30px',
@@ -1103,7 +1147,7 @@ function InputBar({
             background: 'transparent',
             border: '0.5px solid var(--lp-border)',
             color: attachedFile ? 'var(--lp-accent)' : 'var(--lp-text-hint)',
-            cursor: sending ? 'default' : 'pointer',
+            cursor: isProcessing ? 'default' : 'pointer',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1122,7 +1166,7 @@ function InputBar({
           <button
             type="button"
             onClick={toggleRecording}
-            disabled={sending}
+            disabled={isProcessing}
             style={{
               width: '30px',
               height: '30px',
@@ -1130,7 +1174,7 @@ function InputBar({
               background: isRecording ? 'rgba(239,68,68,0.12)' : 'transparent',
               border: `0.5px solid ${isRecording ? 'rgba(239,68,68,0.4)' : 'var(--lp-border)'}`,
               color: isRecording ? '#ef4444' : 'var(--lp-text-hint)',
-              cursor: sending ? 'default' : 'pointer',
+              cursor: isProcessing ? 'default' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -1153,15 +1197,15 @@ function InputBar({
         <button
           type="button"
           onClick={handleSend}
-          disabled={!value.trim() || sending}
+          disabled={!value.trim() || isProcessing}
           style={{
             width: '30px',
             height: '30px',
             borderRadius: '8px',
-            background: value.trim() && !sending ? 'var(--lp-accent-dim)' : 'transparent',
-            border: `0.5px solid ${value.trim() && !sending ? 'rgba(45,212,191,0.3)' : 'var(--lp-border)'}`,
-            color: value.trim() && !sending ? 'var(--lp-accent)' : 'var(--lp-text-hint)',
-            cursor: value.trim() && !sending ? 'pointer' : 'default',
+            background: value.trim() && !isProcessing ? 'var(--lp-accent-dim)' : 'transparent',
+            border: `0.5px solid ${value.trim() && !isProcessing ? 'rgba(45,212,191,0.3)' : 'var(--lp-border)'}`,
+            color: value.trim() && !isProcessing ? 'var(--lp-accent)' : 'var(--lp-text-hint)',
+            cursor: value.trim() && !isProcessing ? 'pointer' : 'default',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -1179,7 +1223,7 @@ function InputBar({
         <select
           value={provider}
           onChange={(e) => setProvider(e.target.value)}
-          disabled={sending}
+          disabled={isProcessing}
           aria-label="Cloud provider"
           style={{
             alignSelf: 'flex-start',
@@ -1190,9 +1234,9 @@ function InputBar({
             fontFamily: 'var(--font-inter), system-ui, sans-serif',
             fontSize: '11px',
             color: 'var(--lp-text-secondary)',
-            cursor: sending ? 'default' : 'pointer',
+            cursor: isProcessing ? 'default' : 'pointer',
             outline: 'none',
-            opacity: sending ? 0.5 : 1,
+            opacity: isProcessing ? 0.5 : 1,
           }}
         >
           {CLOUD_PROVIDERS.map((p) => (
@@ -1240,6 +1284,10 @@ export default function ForgeChatPanel() {
       @keyframes forgeMicPulse {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.45; }
+      }
+      @keyframes forgeWaveDot {
+        0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+        30% { transform: translateY(-5px); opacity: 1; }
       }
     `}</style>
     <aside
@@ -1347,20 +1395,25 @@ export default function ForgeChatPanel() {
                 Agent is warming up…
               </p>
             ) : (
-              messages.map((msg) => (
-                <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  onClarificationSubmit={
-                    msg.clarificationCard
-                      ? (answers) => handleClarificationSubmit(msg.clarificationCard!.id, answers)
-                      : undefined
-                  }
-                  clarificationSubmitted={
-                    msg.clarificationCard ? submittedCards.has(msg.clarificationCard.id) : undefined
-                  }
-                />
-              ))
+              <>
+                {messages.map((msg) => (
+                  <MessageBubble
+                    key={msg.id}
+                    message={msg}
+                    onClarificationSubmit={
+                      msg.clarificationCard
+                        ? (answers) => handleClarificationSubmit(msg.clarificationCard!.id, answers)
+                        : undefined
+                    }
+                    clarificationSubmitted={
+                      msg.clarificationCard ? submittedCards.has(msg.clarificationCard.id) : undefined
+                    }
+                  />
+                ))}
+                <AnimatePresence>
+                  {stageStatus[activeStage] === 'processing' && <TypingIndicator />}
+                </AnimatePresence>
+              </>
             )}
           </div>
         ) : (
