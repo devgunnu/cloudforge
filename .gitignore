@@ -91,3 +91,6 @@ ehthumbs.db
 # ── Testing ──────────────────────────────────────────────────
 coverage/
 .nyc_output/
+
+# ── CloudForge specific ───────────────────────────────────────
+backend/outputs
