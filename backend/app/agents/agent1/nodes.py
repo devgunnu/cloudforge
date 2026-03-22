@@ -7,7 +7,7 @@ from typing import Any
 
 from app.agents.agent1.llm import get_llm
 from app.agents.agent1.prompts import CLARIFIER_PROMPT, PLANNER_PROMPT
-from app.agents.agent1.state import AgentState, ClarifierOutput, FinalPRDJson, PlannerOutput, ResearchResult
+from app.agents.agent1.state import AgentState, ClarifierOutput, FinalPRDJson, PlannerOutput, QuestionOption, QuestionWithOptions, ResearchResult
 from app.agents.agent1.tools import web_search
 from app.config import settings
 
@@ -79,6 +79,154 @@ def _augment_research_queries(state: AgentState, queries: list[str]) -> list[str
     return unique[: max(settings.max_research_rounds, len(REQUIRED_RESEARCH_AREAS))]
 
 
+def _normalize_options_metadata(payload: ClarifierOutput) -> None:
+    for question in payload.questions_with_options:
+        for option in question.options:
+            if not option.description.strip():
+                if option.is_custom:
+                    option.description = "Provide your own requirement when presets do not fit."
+                else:
+                    option.description = f"Choose this when '{option.label}' best matches your use case."
+            if not option.impact.strip():
+                if option.is_custom:
+                    option.impact = "Planner will adapt architecture using your custom guidance."
+                else:
+                    option.impact = "This choice directly influences service sizing, architecture complexity, and cost."
+
+
+def _fallback_options_for_question(question: str) -> list[QuestionOption]:
+    q = question.lower()
+
+    if any(key in q for key in ["persona", "user", "workflow", "audience"]):
+        return [
+            QuestionOption(
+                label="Internal security and compliance teams",
+                value="internal_security_compliance_teams",
+                description="Focused on governance, policy checks, and enterprise controls.",
+                impact="Prioritizes auditability, RBAC, and policy automation.",
+            ),
+            QuestionOption(
+                label="IT operations and platform engineering",
+                value="it_ops_platform_engineering",
+                description="Focused on operational visibility and lifecycle workflows.",
+                impact="Drives integration with automation pipelines and incident tooling.",
+            ),
+            QuestionOption(
+                label="Mixed stakeholders (security + ops + leadership)",
+                value="mixed_enterprise_stakeholders",
+                description="Supports cross-functional reporting and decision-making.",
+                impact="Requires role-specific views and stronger data model flexibility.",
+            ),
+            QuestionOption(
+                label="Custom",
+                value="custom",
+                description="Provide your own persona/workflow details.",
+                impact="Planner will adapt features and user journeys to your custom needs.",
+                is_custom=True,
+            ),
+        ]
+
+    if any(key in q for key in ["scale", "latency", "availability", "sla", "slo", "rps", "throughput"]):
+        return [
+            QuestionOption(
+                label="Moderate scale, standard latency",
+                value="moderate_scale_standard_latency",
+                description="Good for initial enterprise rollout with predictable load.",
+                impact="Lower baseline cost and simpler architecture at launch.",
+            ),
+            QuestionOption(
+                label="High scale, near-real-time response",
+                value="high_scale_near_realtime",
+                description="Designed for larger tenant activity and frequent analysis runs.",
+                impact="Needs autoscaling, partitioning, and tighter observability.",
+            ),
+            QuestionOption(
+                label="Mission-critical, strict SLO/HA",
+                value="mission_critical_strict_slo_ha",
+                description="For regulated workloads with strict uptime/latency targets.",
+                impact="Requires multi-region resilience and higher operational cost.",
+            ),
+            QuestionOption(
+                label="Custom",
+                value="custom",
+                description="Provide custom scale and SLO targets.",
+                impact="Planner will tune architecture and capacity to your explicit targets.",
+                is_custom=True,
+            ),
+        ]
+
+    if any(key in q for key in ["compliance", "regulation", "audit", "security", "gdpr", "hipaa", "soc2", "pii"]):
+        return [
+            QuestionOption(
+                label="Baseline enterprise controls (SOC2-aligned)",
+                value="baseline_soc2_aligned",
+                description="Standard enterprise baseline with IAM and auditability.",
+                impact="Enforces centralized logging and retention policies.",
+            ),
+            QuestionOption(
+                label="Regulated controls (GDPR/PII)",
+                value="regulated_gdpr_pii",
+                description="Adds data locality and privacy governance constraints.",
+                impact="Introduces stronger encryption and lifecycle requirements.",
+            ),
+            QuestionOption(
+                label="Highly regulated (HIPAA/financial-grade)",
+                value="highly_regulated_hipaa_finance",
+                description="For strict compliance and formal control evidence.",
+                impact="Needs immutable audit trails and stronger segmentation.",
+            ),
+            QuestionOption(
+                label="Custom",
+                value="custom",
+                description="Provide your own compliance requirements.",
+                impact="Planner will align architecture and controls to your obligations.",
+                is_custom=True,
+            ),
+        ]
+
+    return [
+        QuestionOption(
+            label="Lean baseline approach",
+            value="lean_baseline_approach",
+            description="Start with minimal capabilities and iterate quickly.",
+            impact="Faster delivery and lower initial complexity.",
+        ),
+        QuestionOption(
+            label="Balanced enterprise approach",
+            value="balanced_enterprise_approach",
+            description="Balance reliability, governance, and implementation effort.",
+            impact="Moderate cost with good scalability and compliance readiness.",
+        ),
+        QuestionOption(
+            label="Robust future-proof approach",
+            value="robust_future_proof_approach",
+            description="Design for high scale and strict governance from day one.",
+            impact="Higher initial cost but fewer redesigns later.",
+        ),
+        QuestionOption(
+            label="Custom",
+            value="custom",
+            description="Provide your own preferred direction.",
+            impact="Planner will tailor architecture to your priorities.",
+            is_custom=True,
+        ),
+    ]
+
+
+def _ensure_questions_have_options(payload: ClarifierOutput) -> None:
+    if payload.questions_with_options:
+        return
+
+    payload.questions_with_options = [
+        QuestionWithOptions(
+            question=question,
+            original_question=question,
+            options=_fallback_options_for_question(question),
+        )
+        for question in payload.follow_up_questions
+    ]
+
+
 def user_input_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     model_state = _as_state(state)
     logger.info("Processing user input")
@@ -101,11 +249,21 @@ def research_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     model_state.clarification_rounds = rounds
 
     llm = get_llm()
-    # Include all prior answers to support deep, iterative clarification for natural-language input.
+    
+    # Build Q&A history from answered pairs for clarity.
+    qa_history = ""
+    if model_state.answered_qa_pairs:
+        qa_history = "Previously Answered Questions:\n"
+        for q, a in model_state.answered_qa_pairs:
+            qa_history += f"Q: {q}\nA: {a}\n\n"
+        qa_history += "\n"
+    
+    # Include all prior answers and structured Q&A history to support deep, iterative clarification.
     prompt = (
         f"{CLARIFIER_PROMPT}\n\n"
         f"Cloud provider: {model_state.cloud_provider}\n"
         f"Initial Product Description:\n{model_state.prd_text}\n\n"
+        f"{qa_history}"
         f"User Clarifications:\n{model_state.user_answers}\n"
     )
 
@@ -115,6 +273,8 @@ def research_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
         elapsed = time.perf_counter() - start
         logger.info("Research analysis completed in %.2f seconds", elapsed)
         payload = ClarifierOutput.model_validate(_extract_json(str(response.content)))
+        _ensure_questions_have_options(payload)
+        _normalize_options_metadata(payload)
     except Exception as exc:  # noqa: BLE001
         _safe_errors(model_state, f"clarifier_failed: {exc}")
         model_state.status = "needs_input"
@@ -123,6 +283,14 @@ def research_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
                 "What user personas and core workflows should this product support?",
                 "What are target scale, latency, availability, and compliance requirements?",
             ]
+        fallback_payload = ClarifierOutput(
+            is_information_enough=False,
+            follow_up_questions=model_state.follow_up_questions,
+            research_queries=[],
+        )
+        _ensure_questions_have_options(fallback_payload)
+        _normalize_options_metadata(fallback_payload)
+        model_state.questions_with_options = fallback_payload.questions_with_options
         return _dump_state(model_state)
 
     # CoT is not logged; show a safe reasoning summary from structured model output.
@@ -192,8 +360,9 @@ def web_search_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
 def information_gate_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     model_state = _as_state(state)
     logger.info("Checking if product requirements are clear enough")
-    
-    # If user provided selected option answers, convert them to natural language user answers.
+
+    # If user provided selected option answers, convert them to natural language user answers
+    # and track Q&A pairs for clarity in subsequent clarification rounds.
     if model_state.selected_option_answers:
         for q_idx, selected_value in model_state.selected_option_answers.items():
             if q_idx < len(model_state.questions_with_options):
@@ -210,11 +379,15 @@ def information_gate_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
                     response = matched_option.label if not matched_option.is_custom else selected_value
                     logger.info("User selected option for '%s': %s", question_obj.original_question, response)
                     model_state.user_answers.append(response)
+                    # Track Q&A pair for next round's clarification
+                    model_state.answered_qa_pairs.append((question_obj.original_question, response))
                 else:
                     # No matching option found - treat as custom freeform input
                     # (user bypassed option selection and provided direct text)
                     logger.info("User provided custom input for '%s': %s", question_obj.original_question, selected_value)
                     model_state.user_answers.append(selected_value)
+                    # Track Q&A pair for next round's clarification
+                    model_state.answered_qa_pairs.append((question_obj.original_question, selected_value))
         model_state.selected_option_answers = {}  # Clear after processing
     
     if not model_state.is_information_enough:
@@ -325,6 +498,13 @@ def acceptance_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     return _dump_state(model_state)
 
 
+def await_user_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
+    model_state = _as_state(state)
+    model_state.status = "needs_input"
+    logger.info("Waiting for user clarification input")
+    return _dump_state(model_state)
+
+
 def information_route(state: dict[str, Any] | AgentState) -> str:
     model_state = _as_state(state)
     return "plan" if model_state.is_information_enough else "await_user"
@@ -341,5 +521,5 @@ def acceptance_route(state: dict[str, Any] | AgentState) -> str:
     if accepted is True:
         return "end"
     if accepted is False:
-        return "user_input"
+        return "await_user"
     return "end"
