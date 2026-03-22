@@ -22,6 +22,11 @@ Language: {{ language }}
 - Follow language best practices and conventions
 {% endif %}
 
+Cross-service isolation (mandatory):
+- This service is a STANDALONE, independently-deployed unit. DO NOT import, require, or reference modules, functions, or classes from any other service in this architecture.
+- Services communicate EXCLUSIVELY via HTTP/HTTPS calls, AWS SDK calls (invoking Lambda by ARN, publishing to SQS/SNS/EventBridge), or environment variable references to resource names/ARNs.
+- DO NOT write mock implementations, stub functions, dummy classes, or placeholder TODO blocks — generate real, production-ready code that processes actual AWS events and requests.
+
 General rules:
 - Include error handling with meaningful error messages
 - Use environment variables for all AWS resource references (ARNs, table names, bucket names, etc.)

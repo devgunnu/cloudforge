@@ -2,7 +2,7 @@ Generate {{ language }} application code for the following AWS service.
 
 {% if architecture_overview %}
 ## Architecture Overview
-This service is part of a larger architecture. Understand the full system context so your code integrates correctly with other services:
+Use this to understand data flow and messaging patterns. DO NOT import or call code from other services — communicate only via HTTP/SDK/events as defined in the API Contracts below.
 
 {{ architecture_overview }}
 {% endif %}
@@ -40,7 +40,8 @@ This service participates in the following integration contracts:
 Payload schema:
 {{ c.payload_schema | tojson(indent=2) }}
 {% if c.function_signatures[language] is defined %}
-Expected signature ({{ language }}): `{{ c.function_signatures[language] }}`
+Handler signature to implement on THIS service ({{ language }}): `{{ c.function_signatures[language] }}`
+{# This is the interface contract — implement this signature in your handler. Do NOT import it from another service. #}
 {% endif %}
 {% if c.notes %}Notes: {{ c.notes }}{% endif %}
 {% endfor %}
@@ -58,7 +59,13 @@ The following Terraform resources are provisioned for this service — use the r
 Generate the handler/entry point file: `services/{{ service_id }}/index.{{ ext }}`
 
 {% if service_type == "lambda" %}
-The handler must export a function with signature: `def handler(event, context)` (Python) or `export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult>` (TypeScript).
+{% if language == "python" %}
+Implement: `def handler(event: dict, context: Any) -> dict:`
+{% elif language == "typescript" %}
+Implement: `export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> =>`
+{% else %}
+Implement the standard handler entry point for {{ language }}.
+{% endif %}
 {% elif service_type == "ecs" or service_type == "ec2" %}
 Generate a long-running service entrypoint appropriate for a container or server process.
 {% elif service_type == "glue" %}

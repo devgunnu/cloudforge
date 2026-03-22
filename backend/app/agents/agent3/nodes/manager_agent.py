@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.agents.agent3.config import MANAGER_MAX_REVIEW_ITERATIONS, MAX_CODEGEN_WORKERS
+from app.agents.agent3.config import MANAGER_MAX_REVIEW_ITERATIONS
 from app.agents.agent3.llm import get_default_llm
 from app.agents.agent3.prompts.manager_prompts import (
     manager_planning_system,

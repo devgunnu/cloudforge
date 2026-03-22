@@ -22,7 +22,7 @@ _PROGRESS_NODES = frozenset({
     "parse_input",
     "tf_generator",
     "tf_validation_loop",
-    "orchestrator",
+    "manager_agent",
     "assembler",
     "error_handler",
 })
@@ -84,6 +84,19 @@ async def _stream_events(
             if event_type == "on_chain_start" and node_name in _PROGRESS_NODES:
                 yield _sse({"phase": node_name, "status": "started", "thread_id": thread_id})
 
+            # --- Per-task custom events from codegen workers ---
+            elif event_type == "on_custom_event" and isinstance(data, dict) and data.get("_event") == "task_update":
+                payload = data
+                yield _sse({
+                    "phase": "task_update",
+                    "thread_id": thread_id,
+                    "task_id": payload.get("task_id"),
+                    "service_id": payload.get("service_id"),
+                    "language": payload.get("language"),
+                    "status": payload.get("status"),
+                    "error": payload.get("error"),
+                })
+
             # --- Node finished ---
             elif event_type == "on_chain_end" and node_name in _PROGRESS_NODES:
                 output = data.get("output", {}) or {}
@@ -97,16 +110,37 @@ async def _stream_events(
                         "thread_id": thread_id,
                     })
 
-                elif node_name == "orchestrator":
+                elif node_name == "manager_agent":
+                    task_groups = output.get("task_groups") or []
                     task_list = output.get("task_list") or []
-                    yield _sse({
-                        "phase": "orchestrator",
-                        "status": "done",
-                        "tasks_done": sum(1 for t in task_list if t["status"] == "done"),
-                        "tasks_failed": sum(1 for t in task_list if t["status"] == "failed"),
-                        "tasks_total": len(task_list),
-                        "thread_id": thread_id,
-                    })
+                    plan_summary = output.get("manager_plan_summary", "")
+                    # Only emit during planning mode — review mode returns empty task_groups.
+                    if task_groups:
+                        yield _sse({
+                            "phase": "manager_agent",
+                            "status": "planned",
+                            "thread_id": thread_id,
+                            "plan_summary": plan_summary,
+                            "task_groups": [
+                                {
+                                    "group_id": g["group_id"],
+                                    "service_ids": g["service_ids"],
+                                    "rationale": g.get("rationale", ""),
+                                }
+                                for g in task_groups
+                            ],
+                            "tasks": [
+                                {
+                                    "task_id": t["task_id"],
+                                    "service_id": t["service_id"],
+                                    "language": t["language"],
+                                    "task_type": t["task_type"],
+                                    "status": t["status"],
+                                }
+                                for t in task_list
+                                if t.get("task_type") == "code_gen"
+                            ],
+                        })
 
                 elif node_name == "assembler":
                     meta = output.get("generation_metadata", {}) or {}

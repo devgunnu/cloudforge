@@ -40,6 +40,8 @@ An array of contract objects, one for each connection between services that requ
 
 Contract types: "event_payload" (async events), "api_request" (sync HTTP), "queue_message" (SQS/SNS), "stream_record" (Kinesis/DynamoDB streams).
 
+The `function_signatures` field describes the handler interface the **target** service must implement — it is NOT a function to import from another service.
+
 ### task_groups
 An array of 1 to 3 groups. Each group contains semantically related services that should be generated together by the same worker:
 
@@ -58,8 +60,12 @@ Rules for grouping:
 - Every service from the code_gen task list MUST appear in exactly one group
 - The group's `tasks` field will be populated by the system — you only need to specify `service_ids`
 
+Important grouping rules:
+- Infrastructure-only services (S3, DynamoDB, RDS, SQS, SNS, VPC, CloudFront, ElastiCache, etc.) have NO code generation tasks. Do NOT include them in any task group — only include services that appear in the code_gen task list.
+- Services in the same group may use different programming languages — each service is generated independently by its own language-specific prompt.
+
 ### plan_summary
-A brief (2-4 sentence) natural language summary of the coding plan: what services are being generated, key integration points, and any ordering considerations.
+A brief (2-4 sentence) natural language summary of the coding plan: what services are being generated and their key integration points.
 
 ## Rules
 - Only define contracts for connections between services that have code generation tasks — skip pure infrastructure services (S3, RDS, DynamoDB, etc.) unless they connect to a code-generating service

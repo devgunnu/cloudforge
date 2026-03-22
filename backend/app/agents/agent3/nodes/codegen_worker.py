@@ -14,6 +14,7 @@ from app.agents.agent3.state import (
     WorkerResult,
 )
 from app.agents.agent3.tools.task_tools import describe_service
+from langgraph.config import get_stream_writer
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,7 @@ def codegen_worker_node(state: CodegenWorkerState) -> dict[str, Any]:
     code_files: dict[str, str] = {}
     code_errors: list[CodeError] = []
     completed_tasks: list[TaskItem] = []
+    write = get_stream_writer()
 
     for task in tasks:
         service_id = task["service_id"]
@@ -148,6 +150,8 @@ def codegen_worker_node(state: CodegenWorkerState) -> dict[str, Any]:
                     )
                 )
                 logger.warning("code_gen FAILED for %s (group %s): %s", service_id, group_id, error_msg)
+                write({"_event": "task_update", "task_id": task["task_id"], "service_id": service_id,
+                       "language": language, "status": "failed", "error": error_msg})
                 continue
 
             file_path = f"services/{service_id}/index.{ext}"
@@ -164,6 +168,8 @@ def codegen_worker_node(state: CodegenWorkerState) -> dict[str, Any]:
                 )
             )
             logger.info("code_gen OK: %s (group %s)", file_path, group_id)
+            write({"_event": "task_update", "task_id": task["task_id"], "service_id": service_id,
+                   "language": language, "status": "done", "error": None})
 
         except Exception as e:
             error_msg = str(e)
@@ -187,6 +193,8 @@ def codegen_worker_node(state: CodegenWorkerState) -> dict[str, Any]:
                 )
             )
             logger.warning("code_gen EXCEPTION for %s (group %s): %s", service_id, group_id, error_msg)
+            write({"_event": "task_update", "task_id": task["task_id"], "service_id": service_id,
+                   "language": language, "status": "failed", "error": error_msg})
 
     logger.info(
         "codegen_worker done: group=%s, %d files generated, %d errors",
