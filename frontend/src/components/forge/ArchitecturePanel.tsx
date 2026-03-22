@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForgeStore } from '@/store/forgeStore';
+import ArchDiagram, { convertForgeNodes, convertForgeEdges } from '@/components/cloudforge/ArchDiagram';
 import {
   runAgent2,
   AGENT2_STEPS,
@@ -13,9 +14,6 @@ import {
 import type { ForgeArchNode } from '@/store/forgeStore';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const NODE_W = 140;
-const NODE_H = 70;
 
 const ALTERNATIVES = [
   {
@@ -29,44 +27,6 @@ const ALTERNATIVES = [
       'Cold start overhead from container spin-up exceeds the 200ms P95 NFR — Lambda arm64 chosen',
   },
 ];
-
-// ── Node type color maps ───────────────────────────────────────────────────────
-
-const NODE_COLORS: Record<
-  ForgeArchNode['type'],
-  { background: string; border: string; borderSelected: string }
-> = {
-  gateway: {
-    background: 'rgba(45,212,191,0.06)',
-    border: 'rgba(45,212,191,0.25)',
-    borderSelected: 'rgba(45,212,191,0.7)',
-  },
-  compute: {
-    background: 'rgba(45,212,191,0.06)',
-    border: 'rgba(45,212,191,0.2)',
-    borderSelected: 'rgba(45,212,191,0.6)',
-  },
-  cache: {
-    background: 'rgba(245,158,11,0.06)',
-    border: 'rgba(245,158,11,0.2)',
-    borderSelected: 'rgba(245,158,11,0.65)',
-  },
-  storage: {
-    background: 'rgba(52,211,153,0.06)',
-    border: 'rgba(52,211,153,0.2)',
-    borderSelected: 'rgba(52,211,153,0.65)',
-  },
-  auth: {
-    background: 'rgba(167,139,250,0.06)',
-    border: 'rgba(167,139,250,0.2)',
-    borderSelected: 'rgba(167,139,250,0.65)',
-  },
-  queue: {
-    background: 'rgba(45,212,191,0.06)',
-    border: 'rgba(45,212,191,0.15)',
-    borderSelected: 'rgba(45,212,191,0.55)',
-  },
-};
 
 const VALIDATES_CHIP_COLORS: Record<ForgeArchNode['type'], string> = {
   gateway: 'rgba(45,212,191,0.15)',
@@ -129,143 +89,6 @@ function StepDot({ state }: { state: 'done' | 'active' | 'pending' }) {
   );
 }
 
-// ── Architecture diagram: SVG edge overlay ────────────────────────────────────
-
-interface EdgeOverlayProps {
-  nodes: ForgeArchNode[];
-  edges: Array<{ from: string; to: string }>;
-}
-
-function EdgeOverlay({ nodes, edges }: EdgeOverlayProps) {
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
-
-  return (
-    <svg
-      style={{
-        position: 'absolute',
-        inset: 0,
-        width: '100%',
-        height: '100%',
-        pointerEvents: 'none',
-        overflow: 'visible',
-      }}
-      aria-hidden="true"
-    >
-      {edges.map((edge, i) => {
-        const fromNode = nodeMap.get(edge.from);
-        const toNode = nodeMap.get(edge.to);
-        if (!fromNode || !toNode) return null;
-
-        const x1 = fromNode.x + NODE_W / 2;
-        const y1 = fromNode.y + NODE_H / 2;
-        const x2 = toNode.x + NODE_W / 2;
-        const y2 = toNode.y + NODE_H / 2;
-
-        return (
-          <line
-            key={i}
-            x1={x1}
-            y1={y1}
-            x2={x2}
-            y2={y2}
-            stroke="var(--lp-accent)"
-            strokeOpacity={0.4}
-            strokeDasharray="4 4"
-            strokeWidth={1.5}
-          />
-        );
-      })}
-    </svg>
-  );
-}
-
-// ── Architecture diagram: single node card ────────────────────────────────────
-
-interface NodeCardProps {
-  node: ForgeArchNode;
-  isSelected: boolean;
-  onClick: (id: string) => void;
-}
-
-function NodeCard({ node, isSelected, onClick }: NodeCardProps) {
-  const colors = NODE_COLORS[node.type];
-
-  return (
-    <motion.button
-      type="button"
-      onClick={() => onClick(node.id)}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-      aria-pressed={isSelected}
-      aria-label={`${node.label} — ${node.sublabel}`}
-      style={{
-        position: 'absolute',
-        left: node.x,
-        top: node.y,
-        width: `${NODE_W}px`,
-        height: `${NODE_H}px`,
-        background: colors.background,
-        border: `${isSelected ? '1.5px' : '0.5px'} solid ${
-          isSelected ? colors.borderSelected : colors.border
-        }`,
-        borderRadius: '10px',
-        cursor: 'pointer',
-        display: 'flex',
-        flexDirection: 'column',
-        justifyContent: 'center',
-        padding: '10px 12px',
-        textAlign: 'left',
-        gap: '3px',
-        outline: 'none',
-        transition: 'border-color 150ms ease',
-      }}
-    >
-      {/* Validated badge */}
-      <span
-        aria-label="validated"
-        style={{
-          position: 'absolute',
-          top: '6px',
-          right: '8px',
-          fontSize: '9px',
-          color: 'rgba(52,211,153,0.9)',
-          fontFamily: 'var(--font-inter), system-ui, sans-serif',
-          fontWeight: 600,
-          letterSpacing: '0.02em',
-        }}
-      >
-        ✓
-      </span>
-
-      {/* Service name */}
-      <span
-        style={{
-          fontFamily: 'var(--font-jetbrains-mono), monospace',
-          fontSize: '12px',
-          fontWeight: 600,
-          color: 'var(--lp-text-primary)',
-          lineHeight: 1.2,
-          paddingRight: '14px',
-        }}
-      >
-        {node.label}
-      </span>
-
-      {/* Sublabel */}
-      <span
-        style={{
-          fontFamily: 'var(--font-inter), system-ui, sans-serif',
-          fontSize: '10px',
-          color: 'var(--lp-text-secondary)',
-          lineHeight: 1.2,
-        }}
-      >
-        {node.sublabel}
-      </span>
-    </motion.button>
-  );
-}
 
 // ── Node inspector panel ──────────────────────────────────────────────────────
 
@@ -827,18 +650,10 @@ export default function ArchitecturePanel() {
                   inset: 0,
                 }}
               >
-                {/* SVG edge overlay */}
-                <EdgeOverlay nodes={displayNodes} edges={displayEdges} />
-
-                {/* Node cards */}
-                {displayNodes.map((node) => (
-                  <NodeCard
-                    key={node.id}
-                    node={node}
-                    isSelected={selectedNodeId === node.id}
-                    onClick={handleNodeClick}
-                  />
-                ))}
+                <ArchDiagram
+                  nodes={convertForgeNodes(displayNodes)}
+                  edges={convertForgeEdges(displayEdges)}
+                />
               </motion.div>
             )}
           </AnimatePresence>
