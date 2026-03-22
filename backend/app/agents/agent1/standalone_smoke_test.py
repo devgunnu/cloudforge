@@ -102,18 +102,28 @@ def process_option_selection_by_text(state: AgentState, question_idx: int, user_
     question = state.questions_with_options[question_idx]
     normalized_input = _normalize(user_input)
 
+    # First pass: exact match on label or value.
     for option in question.options:
         option_label = _normalize(option.label)
         option_value = _normalize(option.value)
-        if (
-            option_label == normalized_input
-            or option_value == normalized_input
-            or normalized_input in option_label
-            or option_label in normalized_input
-        ):
+        if option_label == normalized_input or option_value == normalized_input:
             state.selected_option_answers[question_idx] = option.value
             logger.info("User matched option text for question %s: %s", question_idx + 1, option.label)
             return
+
+    # Second pass: contains match, prefer the longest label to avoid prefix collisions
+    # like "S3 Standard" matching "S3 Standard-IA".
+    contains_matches: list[tuple[int, QuestionOption]] = []
+    for option in question.options:
+        option_label = _normalize(option.label)
+        if normalized_input in option_label or option_label in normalized_input:
+            contains_matches.append((len(option_label), option))
+
+    if contains_matches:
+        _, best_option = max(contains_matches, key=lambda item: item[0])
+        state.selected_option_answers[question_idx] = best_option.value
+        logger.info("User matched option text for question %s: %s", question_idx + 1, best_option.label)
+        return
 
     # No exact option match -> preserve as custom free-form input.
     state.selected_option_answers[question_idx] = user_input
