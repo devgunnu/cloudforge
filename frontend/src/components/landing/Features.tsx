@@ -1,208 +1,155 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import {
-  Layers,
-  Cpu,
-  Globe2,
-  ActivitySquare,
-  GitBranch,
-  ShieldCheck,
-} from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import { motion, useInView } from 'framer-motion';
+import { FileText, Network, GitBranch, ShieldCheck, Terminal, Layers } from 'lucide-react';
+import { useRef } from 'react';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
-interface Feature {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-}
-
-const FEATURES: Feature[] = [
+const FEATURES = [
   {
-    icon: Layers,
-    title: 'No config files',
-    description:
-      'Draw your infrastructure instead of writing YAML. Every AWS resource is a draggable node with a visual properties panel.',
+    Icon: FileText,
+    title: 'PRD-first',
+    desc: "Start with what you're building, not what infrastructure to pick. CloudForge extracts requirements before recommending anything.",
   },
   {
-    icon: Cpu,
-    title: 'Claude-generated Terraform',
-    description:
-      'Your diagram is converted to production-grade HCL by Claude Sonnet — reviewed, idiomatic, and ready to apply.',
+    Icon: Network,
+    title: 'Graph-validated',
+    desc: 'A KuzuDB constraint graph deterministically validates AWS service compatibility before the LLM writes a single line.',
   },
   {
-    icon: Globe2,
-    title: 'Real provisioning',
-    description:
-      'Not a simulator. CloudForge talks directly to the AWS Cloud Control API and creates live resources in your account.',
+    Icon: GitBranch,
+    title: 'Your GitHub',
+    desc: 'CloudForge writes your full codebase and pushes it directly to your repo: not a template, not boilerplate. Production-ready code.',
   },
   {
-    icon: ActivitySquare,
+    Icon: ShieldCheck,
+    title: 'Your AWS',
+    desc: 'Cross-account IAM role assumption only. No credentials stored. Your infrastructure, your bill, your control.',
+  },
+  {
+    Icon: Terminal,
     title: 'Live deploy log',
-    description:
-      'Watch every Terraform operation stream in real time. Lambda created. IAM role attached. VPC peered. All of it.',
+    desc: 'Every Terraform operation streams to your browser in real time. Lambda created. IAM attached. VPC peered. Nothing hidden.',
   },
   {
-    icon: GitBranch,
-    title: 'Topology as code',
-    description:
-      'Every architecture exports as a typed JSON schema you can version, share, and restore — infrastructure as a commit.',
+    Icon: Layers,
+    title: 'Zero config files',
+    desc: 'No YAML, no HCL to write, no AWS console to click through. Every resource is configured through a visual panel.',
   },
-  {
-    icon: ShieldCheck,
-    title: 'Type-safe contract',
-    description:
-      'The CloudForgeTopology schema is the single source of truth between your diagram and the Terraform generator. No drift.',
-  },
-];
+] as const;
 
-export default function Features() {
+type FeatureItem = (typeof FEATURES)[number];
+
+function FeatureCard({
+  feat,
+  index,
+  inView,
+}: {
+  feat: FeatureItem;
+  index: number;
+  inView: boolean;
+}) {
   return (
-    <section
+    <motion.div
+      className="lp-card"
+      initial={{ opacity: 0, y: 24 }}
+      animate={inView ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.5, ease: EASE, delay: 0.1 + index * 0.08 }}
+      whileHover={{ y: -2 }}
       style={{
-        padding: '120px 24px',
-        maxWidth: '1100px',
-        margin: '0 auto',
+        background: 'var(--lp-surface)',
+        padding: '28px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '12px',
       }}
     >
-      {/* Section header */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-80px' }}
-        transition={{ duration: 0.6, ease: EASE }}
-        style={{ marginBottom: '72px' }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '12px',
-            marginBottom: '20px',
-          }}
-        >
-          <div
-            style={{
-              height: '1px',
-              width: '32px',
-              background: 'var(--lp-accent)',
-              opacity: 0.6,
-            }}
-          />
-          <span
-            style={{
-              fontFamily: 'var(--font-inter), system-ui, sans-serif',
-              fontSize: '11px',
-              letterSpacing: '0.12em',
-              textTransform: 'uppercase',
-              color: 'var(--lp-text-hint)',
-            }}
-          >
-            Features
-          </span>
-        </div>
-        <h2
-          style={{
-            fontFamily: 'var(--font-inter), system-ui, sans-serif',
-            fontSize: 'clamp(32px, 4vw, 48px)',
-            fontWeight: 600,
-            color: 'var(--lp-text-primary)',
-            letterSpacing: '-0.03em',
-            lineHeight: 1.1,
-            maxWidth: '500px',
-          }}
-        >
-          Everything you need.{' '}
-          <span
-            style={{ color: 'var(--lp-text-secondary)', fontWeight: 400 }}
-          >
-            Nothing you don&apos;t.
-          </span>
-        </h2>
-      </motion.div>
-
-      {/* Grid */}
-      <div
+      <feat.Icon size={20} color="var(--lp-accent)" />
+      <h3
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-          gap: '1px',
-          background: 'var(--lp-border)',
-          borderRadius: '16px',
-          overflow: 'hidden',
-          border: '1px solid var(--lp-border)',
+          fontFamily: 'var(--font-inter), system-ui, sans-serif',
+          fontSize: '15px',
+          fontWeight: 600,
+          color: 'var(--lp-text-primary)',
+          margin: 0,
         }}
       >
-        {FEATURES.map((feature, i) => {
-          const Icon = feature.icon;
-          return (
-            <motion.div
-              key={feature.title}
-              className="lp-card"
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: '-40px' }}
-              transition={{
-                duration: 0.6,
-                ease: EASE,
-                delay: (i % 3) * 0.08,
-              }}
-              style={{
-                padding: '32px',
-                background: 'var(--lp-bg)',
-                borderRadius: 0,
-                border: 'none',
-              }}
-            >
-              {/* Icon */}
-              <div
-                style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '8px',
-                  background: 'var(--lp-accent-dim)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: '20px',
-                  flexShrink: 0,
-                }}
-              >
-                <Icon size={16} style={{ color: 'var(--lp-accent)' }} />
-              </div>
+        {feat.title}
+      </h3>
+      <p
+        style={{
+          fontFamily: 'var(--font-inter), system-ui, sans-serif',
+          fontSize: '14px',
+          color: 'var(--lp-text-secondary)',
+          lineHeight: 1.6,
+          margin: 0,
+        }}
+      >
+        {feat.desc}
+      </p>
+    </motion.div>
+  );
+}
 
-              {/* Title */}
-              <h3
-                style={{
-                  fontFamily: 'var(--font-inter), system-ui, sans-serif',
-                  fontSize: '15px',
-                  fontWeight: 500,
-                  color: 'var(--lp-text-primary)',
-                  letterSpacing: '-0.01em',
-                  marginBottom: '8px',
-                  lineHeight: 1.3,
-                }}
-              >
-                {feature.title}
-              </h3>
+export default function Features() {
+  const ref = useRef<HTMLElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-100px' });
 
-              {/* Description */}
-              <p
-                style={{
-                  fontFamily: 'var(--font-inter), system-ui, sans-serif',
-                  fontSize: '14px',
-                  color: 'var(--lp-text-secondary)',
-                  lineHeight: 1.7,
-                  fontWeight: 400,
-                }}
-              >
-                {feature.description}
-              </p>
-            </motion.div>
-          );
-        })}
+  return (
+    <section
+      id="features"
+      ref={ref}
+      style={{ background: 'var(--lp-bg)', padding: '100px 24px' }}
+    >
+      <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+        {/* Header */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.5, ease: EASE }}
+          style={{ textAlign: 'center', marginBottom: '64px' }}
+        >
+          <h2
+            style={{
+              fontFamily: 'var(--font-inter), system-ui, sans-serif',
+              fontSize: 'clamp(32px, 5vw, 52px)',
+              fontWeight: 600,
+              color: 'var(--lp-text-primary)',
+              letterSpacing: '-0.02em',
+              lineHeight: 1.1,
+              margin: '0 0 4px',
+            }}
+          >
+            Everything you need.
+          </h2>
+          <h2
+            style={{
+              fontFamily: 'var(--font-inter), system-ui, sans-serif',
+              fontSize: 'clamp(32px, 5vw, 52px)',
+              fontWeight: 600,
+              color: 'var(--lp-text-secondary)',
+              letterSpacing: '-0.02em',
+              lineHeight: 1.1,
+              margin: 0,
+            }}
+          >
+            Nothing you don&apos;t.
+          </h2>
+        </motion.div>
+
+        {/* Grid */}
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+            gap: '16px',
+          }}
+        >
+          {FEATURES.map((feat, i) => (
+            <FeatureCard key={feat.title} feat={feat} index={i} inView={inView} />
+          ))}
+        </div>
       </div>
     </section>
   );
