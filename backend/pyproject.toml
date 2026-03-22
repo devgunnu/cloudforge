@@ -8,16 +8,51 @@ dependencies = [
     "ddgs>=9.9.1",
     "duckduckgo-search>=8.1.1",
     "fastapi>=0.135.1",
+    "jinja2>=3.1.6",
     "langchain>=1.2.13",
     "langchain-anthropic>=1.4.0",
     "langchain-community>=0.4.1",
-    "langchain-ollama>=1.0.0",
+    "kuzu>=0.7.0",
+    "sentence-transformers>=3.0.0",
+    "scikit-learn>=1.5.0",
     "langgraph>=1.1.3",
+    "langgraph-prebuilt>=1.0.8",
     "langgraph-cli>=0.4.19",
+    "langgraph-checkpoint-sqlite>=2.0.0",
     "langsmith>=0.7.22",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
     "python-dotenv>=1.2.2",
     "tinyfish>=0.1.0",
     "uvicorn[standard]>=0.42.0",
+    "pyyaml>=6.0.2",
+    "checkov>=3.2.0",
+    "jsonschema>=4.23.0",
+    "jinja2>=3.1.4",
+    "motor>=3.3",
+    "pymongo>=4.6",
+    "cryptography",
+    "PyJWT>=2.8.0",
+    "bcrypt>=4.1.0",
+    "httpx",
+    "boto3",
+    "slowapi>=0.1.9",
+    "json-repair>=0.30.0",
+    "pandas>=3.0.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.0",
+    "httpx>=0.27.0",
+    "pandas>=3.0.1",
+    "mcp>=1.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "pytest-asyncio>=0.23.0",
 ]

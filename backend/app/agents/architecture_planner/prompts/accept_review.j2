@@ -1,0 +1,23 @@
+╔══════════════════════════════════════════════════════════════════╗
+║             CLOUD ARCHITECTURE — REVIEW SUMMARY                  ║
+╚══════════════════════════════════════════════════════════════════╝
+
+Evaluation Score: {{ eval_score }}/10
+
+─── ARCHITECTURE COMPONENTS ──────────────────────────────────────
+{% for node in architecture_diagram.nodes %}
+  • {{ node.service }} ({{ node.id }}) [{{ node.provider }}]
+    {{ node.description }}
+{% endfor %}
+
+─── CONNECTIONS ──────────────────────────────────────────────────
+{% for conn in architecture_diagram.connections %}
+  {{ conn["from"] }} ──[{{ conn.protocol }}]──▶ {{ conn.to }}
+    {{ conn.description }}
+{% endfor %}
+
+─── NON-FUNCTIONAL REQUIREMENTS (excerpt) ───────────────────────
+{{ nfr_document[:800] }}{% if nfr_document|length > 800 %}...{% endif %}
+
+─── EVALUATOR FEEDBACK ───────────────────────────────────────────
+{{ eval_feedback }}

@@ -546,23 +546,25 @@ def web_search_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     # Fetch only trusted official docs, preserving query/source provenance.
     for query in model_state.research_queries:
         try:
+            # Trim overly long queries — DuckDuckGo site: searches work better under ~8 words
+            trimmed_query = ' '.join(query.split()[:8])
             query_start = time.perf_counter()
             items = web_search(
-                query=query,
+                query=trimmed_query,
                 cloud_provider=model_state.cloud_provider,
                 max_results=4,
             )
             logger.info(
-                "Fetched %s result(s) for %s in %.2f seconds",
+                "Fetched %s result(s) for '%s' in %.2f seconds",
                 len(items),
-                query,
+                trimmed_query,
                 time.perf_counter() - query_start,
             )
             for item in items:
-                item["query"] = query
+                item["query"] = trimmed_query
                 results.append(ResearchResult.model_validate(item))
         except Exception as exc:  # noqa: BLE001
-            _safe_errors(model_state, f"search_failed[{query}]: {exc}")
+            _safe_errors(model_state, f"search_failed[{trimmed_query}]: {exc}")
 
     model_state.research_results = results
     logger.info(
