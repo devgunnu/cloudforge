@@ -1,19 +1,49 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Plus, Globe2, Clock, Trash2 } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useForgeStore } from '@/store/forgeStore';
 import { useAuthStore } from '@/store/authStore';
-import type { Project } from '@/lib/mock-data';
+import { useDemoStore } from '@/lib/demo/demoStore';
+import { getDemoProjectList } from '@/lib/demo/demoService';
+import type { Project, ProjectStage, ProjectStatus } from '@/lib/mock-data';
 import type { ForgeStage } from '@/store/forgeStore';
 import StatusBadge from '@/components/cloudforge/StatusBadge';
 
+const DEMO_PROJECT_ID = 'demo-project-cloudforge-2024';
+
+/** Mirrors the ApiProject → Project mapping in projectStore without importing internal types. */
+function apiProjectToProject(p: ReturnType<typeof getDemoProjectList>[number]): Project {
+  const now = Date.now();
+  const updatedMs = new Date(p.updated_at).getTime();
+  const diffMs = now - updatedMs;
+  const diffMin = Math.floor(diffMs / 60000);
+  const diffHr = Math.floor(diffMs / 3600000);
+  let updatedAt: string;
+  if (diffMin < 60) {
+    updatedAt = `${diffMin}m ago`;
+  } else if (diffHr < 24) {
+    updatedAt = `${diffHr}h ago`;
+  } else {
+    updatedAt = new Date(p.updated_at).toLocaleDateString();
+  }
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description ?? '',
+    stage: p.stage as ProjectStage,
+    status: p.status as ProjectStatus,
+    region: p.region ?? 'us-east-1',
+    updatedAt,
+  };
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function ProjectCard({ project, index, onClick, onDelete }: { project: Project; index: number; onClick?: () => void; onDelete?: () => void }) {
+function ProjectCard({ project, index, onClick, onDelete, isDemo }: { project: Project; index: number; onClick?: () => void; onDelete?: () => void; isDemo?: boolean }) {
   const [hovered, setHovered] = useState(false);
   const [deleteHovered, setDeleteHovered] = useState(false);
 
@@ -72,7 +102,7 @@ function ProjectCard({ project, index, onClick, onDelete }: { project: Project; 
         </button>
       )}
 
-      {/* Top row: name + badge */}
+      {/* Top row: name + badges */}
       <div
         style={{
           display: 'flex',
@@ -94,7 +124,28 @@ function ProjectCard({ project, index, onClick, onDelete }: { project: Project; 
         >
           {project.name}
         </span>
-        <StatusBadge status={project.status} size="sm" />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+          {isDemo && (
+            <span
+              aria-label="Demo project"
+              style={{
+                fontFamily: 'var(--font-inter), system-ui, sans-serif',
+                fontSize: '10px',
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                color: 'var(--lp-accent)',
+                border: '1px solid var(--lp-accent)',
+                borderRadius: '4px',
+                padding: '2px 5px',
+                lineHeight: 1,
+              }}
+            >
+              DEMO
+            </span>
+          )}
+          <StatusBadge status={project.status} size="sm" />
+        </div>
       </div>
 
       {/* Description */}
@@ -170,7 +221,10 @@ const OLD_STAGE_TO_FORGE: Record<string, ForgeStage> = {
 export default function DashboardPage() {
   const { projects, loadProjects, createApiProject, deleteApiProject, isLoading, loadError } = useProjectStore();
   const { accessToken } = useAuthStore();
+  const { setDemoMode } = useDemoStore();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const isDemo = searchParams.get('demo') === 'true';
 
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -178,10 +232,17 @@ export default function DashboardPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
+    if (isDemo) {
+      setDemoMode(true);
+      const demoProjects = getDemoProjectList().map(apiProjectToProject);
+      useProjectStore.setState({ projects: demoProjects, isLoading: false, loadError: null });
+      return;
+    }
+    setDemoMode(false);
     if (accessToken) {
       loadProjects(accessToken);
     }
-  }, [accessToken, loadProjects]);
+  }, [isDemo, accessToken, loadProjects, setDemoMode]);
 
   async function handleNewProject() {
     if (!accessToken) {
@@ -219,6 +280,10 @@ export default function DashboardPage() {
   }
 
   function handleOpenProject(project: Project) {
+    if (isDemo) {
+      router.push(`/app/${DEMO_PROJECT_ID}/requirements?demo=true`);
+      return;
+    }
     useForgeStore.getState().setProjectName(project.name);
     useForgeStore.getState().setCurrentProjectId(project.id);
     useForgeStore.getState().hydrateProject(project.id);
@@ -304,6 +369,28 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {isDemo && (
+        <div
+          role="status"
+          style={{
+            marginTop: '16px',
+            padding: '10px 14px',
+            borderRadius: '8px',
+            border: '1px solid rgba(45,212,191,0.3)',
+            background: 'rgba(45,212,191,0.06)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontFamily: 'var(--font-inter), system-ui, sans-serif',
+            fontSize: '13px',
+            color: 'var(--lp-accent)',
+          }}
+        >
+          <span aria-hidden="true" style={{ fontSize: '15px' }}>⚡</span>
+          You are viewing a live demo. Click the E-Commerce Platform card to explore the full pipeline.
+        </div>
+      )}
+
       {error && (
         <p
           style={{
@@ -360,7 +447,8 @@ export default function DashboardPage() {
               project={project}
               index={i}
               onClick={() => handleOpenProject(project)}
-              onDelete={() => setDeleteTarget(project.id)}
+              onDelete={isDemo ? undefined : () => setDeleteTarget(project.id)}
+              isDemo={isDemo && project.id === DEMO_PROJECT_ID}
             />
           </div>
         ))}

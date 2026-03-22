@@ -6,11 +6,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import { FolderOpen, Clock, Settings, CreditCard, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
 
-const sidebarNavStyles = `
-.sidebar-nav::-webkit-scrollbar { width: 3px; }
-.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
-.sidebar-nav::-webkit-scrollbar-thumb { background: var(--lp-border-hover); border-radius: 99px; }
-`;
 
 interface NavItem {
   label: string;
@@ -49,7 +44,6 @@ export default function AppSidebar() {
   }
 
   return (
-    <>
     <aside
       style={{
         width: collapsed ? '52px' : '220px',
@@ -310,8 +304,6 @@ export default function AppSidebar() {
         </button>
       </div>
     </aside>
-    <style>{sidebarNavStyles}</style>
-    </>
   );
 }
 

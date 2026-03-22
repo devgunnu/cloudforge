@@ -9,6 +9,7 @@ import {
   FORGE_STAGE_LABELS,
   type ForgeStage,
 } from '@/store/forgeStore';
+import { isDemoActive } from '@/lib/demo/demoStore';
 
 // ── Stage breadcrumb ──────────────────────────────────────────────────────────
 
@@ -22,7 +23,8 @@ function StageBreadcrumb() {
     const isDev = process.env.NODE_ENV === 'development';
     if (!isDev && stageStatus[stage] === 'locked') return;
     navigateToStage(stage);
-    router.push(`/app/${projectId}/${stage}`);
+    const demoParam = isDemoActive() ? '?demo=true' : '';
+    router.push(`/app/${projectId}/${stage}${demoParam}`);
   }
 
   return (

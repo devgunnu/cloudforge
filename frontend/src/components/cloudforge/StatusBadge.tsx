@@ -29,8 +29,15 @@ const STATUS_CONFIG: Record<
   },
 };
 
+const FALLBACK_CONFIG: { label: string; bg: string; color: string; border: string } = {
+  label: 'Unknown',
+  bg: 'var(--lp-border)',
+  color: 'var(--lp-text-hint)',
+  border: 'var(--lp-border-hover)',
+};
+
 export default function StatusBadge({ status, size = 'default' }: StatusBadgeProps) {
-  const config = STATUS_CONFIG[status];
+  const config = STATUS_CONFIG[status] ?? FALLBACK_CONFIG;
   const fontSize = size === 'sm' ? '10px' : '11px';
   const padding = size === 'sm' ? '1px 6px' : '2px 8px';
 

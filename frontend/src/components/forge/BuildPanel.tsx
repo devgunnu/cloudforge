@@ -5,6 +5,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { FileCode2 } from 'lucide-react';
 import { useForgeStore } from '@/store/forgeStore';
 import { runAgent3 } from '@/lib/forge-agents';
+import { isDemoActive, useDemoStore } from '@/lib/demo/demoStore';
+import { runDemoBuild } from '@/lib/demo/demoService';
+import { DEMO_ARCHITECTURE_NODES } from '@/lib/demo/mockData';
+import type { DemoFile } from '@/lib/demo/demoService';
+import type { ForgeArchEdge } from '@/store/forgeStore';
 import ArchDiagram, { convertForgeNodes, convertForgeEdges } from '@/components/cloudforge/ArchDiagram';
 import type { GeneratedFile, ForgeArchNode } from '@/store/forgeStore';
 
@@ -504,6 +509,31 @@ export default function BuildPanel() {
   const agentRan = useRef(false);
   const activityFilesRef = useRef<Array<{ id: string; name: string; status: 'new' | 'modified' | 'pending' }>>([]);
 
+  // ── Demo bootstrap: runs once on mount ──────────────────────────────────────
+  // Ensures the Zustand isDemoMode flag is set (survives navigation that drops
+  // ?demo=true from the URL) and pre-unlocks prior stages so the build agent
+  // effect can fire even when the user navigated directly to /build?demo=true.
+  useEffect(() => {
+    if (!isDemoActive()) return;
+    useDemoStore.getState().setDemoMode(true);
+
+    const { stageStatus: s, setArchitectureData, setStageStatus } = useForgeStore.getState();
+
+    // Pre-populate architecture if it hasn't been done yet
+    if (s.architecture !== 'done') {
+      const edges: ForgeArchEdge[] = DEMO_ARCHITECTURE_NODES.flatMap((node) =>
+        node.blocks.map((targetId) => ({ from: node.id, to: targetId })),
+      );
+      setArchitectureData({ nodes: DEMO_ARCHITECTURE_NODES, edges });
+      setStageStatus('architecture', 'done');
+    }
+
+    // Unlock build so the agent effect below can trigger
+    if (s.build === 'locked') {
+      setStageStatus('build', 'processing');
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const buildStatus = stageStatus.build;
 
   const archNodes = architectureData?.nodes ?? [];
@@ -570,6 +600,50 @@ export default function BuildPanel() {
         files: [],
       },
     });
+
+    if (isDemoActive()) {
+      runDemoBuild(
+        (message) => addChatMessage('build', message),
+        (demoFiles: DemoFile[]) => {
+          demoFiles.forEach((df) => {
+            const file: GeneratedFile = {
+              id: df.id,
+              name: df.name,
+              path: df.path,
+              lang: df.lang,
+              status: df.status,
+              lines: df.content.split('\n').map((line) => ({ content: line })),
+            };
+            addGeneratedFile(file);
+            activityFilesRef.current = [
+              ...activityFilesRef.current,
+              { id: file.id, name: file.name, status: file.status },
+            ];
+            addChatMessage('build', {
+              id: `agent3-file-${file.id}-${Date.now()}`,
+              role: 'agent',
+              content: '',
+              activityCard: {
+                status: 'done',
+                label: `✓ ${file.name} generated`,
+                files: [{ id: file.id, name: file.name, status: file.status }],
+              },
+            });
+          });
+          setBuildProgress(demoFiles.length, demoFiles.length);
+        },
+      ).then(() => {
+        setStageStatus('build', 'done');
+        addChatMessage('build', {
+          id: `agent3-done-${Date.now()}`,
+          role: 'agent',
+          content: 'Build complete. 5 files generated. Deploy button is now unlocked.',
+        });
+      }).catch(() => {
+        agentRan.current = false;
+      });
+      return;
+    }
 
     const archData = architectureData ?? { nodes: [], edges: [] };
 

@@ -250,12 +250,19 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
     }),
 
   addChatMessage: (stage, message) =>
-    set((state) => ({
-      chatHistory: {
-        ...state.chatHistory,
-        [stage]: [...state.chatHistory[stage], message],
-      },
-    })),
+    set((state) => {
+      // Guard: skip if a message with this ID already exists to prevent
+      // duplicate-key warnings when demo streams are triggered more than once.
+      if (state.chatHistory[stage].some((m) => m.id === message.id)) {
+        return state;
+      }
+      return {
+        chatHistory: {
+          ...state.chatHistory,
+          [stage]: [...state.chatHistory[stage], message],
+        },
+      };
+    }),
 
   setBuildProgress: (pct, total) =>
     set((state) => ({

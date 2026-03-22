@@ -9,7 +9,9 @@ import {
   runAgent2,
   AGENT2_STEPS,
 } from '@/lib/forge-agents';
-import type { ForgeArchNode } from '@/store/forgeStore';
+import type { ForgeArchNode, ForgeArchEdge } from '@/store/forgeStore';
+import { isDemoActive, useDemoStore } from '@/lib/demo/demoStore';
+import { runDemoArchitecture } from '@/lib/demo/demoService';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -731,6 +733,11 @@ export default function ArchitecturePanel() {
 
   const agentRan = useRef(false);
 
+  // Persist demo mode flag so isDemoActive() survives navigation without ?demo=true
+  useEffect(() => {
+    if (isDemoActive()) useDemoStore.getState().setDemoMode(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Run Agent 2 only when explicitly triggered ('processing').
   // 'locked' means not yet started — hydration will set it to 'done' if data exists.
   useEffect(() => {
@@ -748,6 +755,32 @@ export default function ArchitecturePanel() {
 
     setProcessing(true);
     setActiveStep(0);
+
+    if (isDemoActive()) {
+      runDemoArchitecture(
+        (message) => {
+          addChatMessage('architecture', message);
+        },
+        (nodes: ForgeArchNode[]) => {
+          // Build edges from each node's `blocks` array (mirrors real agent output)
+          const edges: ForgeArchEdge[] = nodes.flatMap((node) =>
+            node.blocks.map((targetId) => ({ from: node.id, to: targetId })),
+          );
+          setArchitectureData({ nodes, edges });
+          setStageStatus('architecture', 'done');
+          setProcessing(false);
+        },
+      ).catch(() => {
+        setProcessing(false);
+        addChatMessage('architecture', {
+          id: `agent2-error-${Date.now()}`,
+          role: 'agent',
+          content: 'Architecture generation failed. Please try again.',
+        });
+        agentRan.current = false;
+      });
+      return;
+    }
 
     runAgent2(constraints, (step) => {
       setActiveStep(step);
@@ -800,7 +833,8 @@ export default function ArchitecturePanel() {
       });
     } catch { /* non-fatal — proceed anyway */ }
     advanceStage();
-    router.push(`/app/${id}/build`);
+    const demoParam = isDemoActive() ? '?demo=true' : '';
+    router.push(`/app/${id}/build${demoParam}`);
   }
 
   const displayNodes = architectureData?.nodes ?? [];

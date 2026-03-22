@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* ── AppSidebar scrollbar ───────────────────────────────────────────────── */
+.sidebar-nav::-webkit-scrollbar { width: 3px; }
+.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: var(--lp-border-hover); border-radius: 99px; }
+
 :root {
   --cf-bg-base:       #0a0e1a;
   --cf-bg-surface:    #12172b;
