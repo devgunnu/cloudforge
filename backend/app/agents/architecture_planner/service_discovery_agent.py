@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
@@ -12,6 +13,8 @@ from app.agents.architecture_planner.state import (
 )
 from app.agents.architecture_planner.prompts import render_prompt
 from app.agents.architecture_planner.llm_utils import API_ERROR_TYPES, invoke_with_retry
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["make_service_discovery_node"]
 
@@ -27,7 +30,7 @@ def make_service_discovery_node(llm, terraform_adapter=None):
     Args:
         llm:               Any LangChain chat model.
         terraform_adapter: Optional object satisfying the TerraformMCPProvider
-                           Protocol.  When provided, the node fetches real
+                           Protocol. When provided, the node fetches real
                            Terraform resource data from the MCP server and
                            injects it into the prompt before calling the LLM.
                            When None (default), the node falls back to LLM-only
@@ -35,26 +38,27 @@ def make_service_discovery_node(llm, terraform_adapter=None):
     """
 
     def service_discovery_node(state: ArchitecturePlannerState) -> dict:
+        logger.info("[service_discovery] starting — mcp_adapter=%s", terraform_adapter is not None)
         # ------------------------------------------------------------------
-        # Step 1: Fetch Terraform context via MCP (async, cached, never raises)
+        # Step 1: Fetch MCP context via adapter (async, cached, never raises)
         # ------------------------------------------------------------------
-        terraform_context: str | None = None
+        mcp_context: str | None = None
         if terraform_adapter is not None:
-            terraform_context = asyncio.run(terraform_adapter.format_for_prompt(
+            mcp_context = asyncio.run(terraform_adapter.format_for_prompt(
                 cloud_provider=state["cloud_provider"],
             ))
 
         # ------------------------------------------------------------------
-        # Step 2: Render prompt — terraform_context may be None (Jinja handles it)
+        # Step 2: Render prompt — mcp_context may be None (Jinja handles it)
         # ------------------------------------------------------------------
         prompt = render_prompt(
             "service_discovery",
             cloud_provider=state["cloud_provider"],
-            query_results=state["query_results"],
+            research_results=state.get("research_results", ""),
             budget=state["budget"],
             traffic=state["traffic"],
             availability=state["availability"],
-            terraform_context=terraform_context,
+            terraform_context=mcp_context,
         )
         messages = [HumanMessage(content=prompt)]
 
@@ -68,7 +72,7 @@ def make_service_discovery_node(llm, terraform_adapter=None):
         except API_ERROR_TYPES as exc:
             return {
                 "relevant_services": [],
-                "terraform_mcp_available": terraform_context is not None,
+                "mcp_available": mcp_context is not None,
                 "current_node": "service_discovery",
                 "error_message": f"LLM API error ({type(exc).__name__}): {exc}",
             }
@@ -85,21 +89,22 @@ def make_service_discovery_node(llm, terraform_adapter=None):
             except API_ERROR_TYPES as exc:
                 return {
                     "relevant_services": [],
-                    "terraform_mcp_available": terraform_context is not None,
+                    "mcp_available": mcp_context is not None,
                     "current_node": "service_discovery",
                     "error_message": f"LLM API error ({type(exc).__name__}): {exc}",
                 }
             except Exception as e2:
                 return {
                     "relevant_services": [],
-                    "terraform_mcp_available": terraform_context is not None,
+                    "mcp_available": mcp_context is not None,
                     "current_node": "service_discovery",
                     "error_message": f"Service discovery failed: {str(e2)}",
                 }
 
+        logger.info("[service_discovery] done — %d services", len(result.services))
         return {
             "relevant_services": result.services,
-            "terraform_mcp_available": terraform_context is not None,
+            "mcp_available": mcp_context is not None,
             "current_node": "service_discovery",
         }
 

@@ -1,0 +1,34 @@
+You are a cloud resilience architect. Pre-computed failure analysis is provided. Enrich it with RPO/RTO feasibility and a resilience score.
+
+## Architecture
+
+{{ architecture_diagram }}
+
+## Availability Target: {{ availability }}
+
+## NFR Document (excerpt)
+
+{{ nfr_document[:500] }}
+
+## Pre-computed SPOFs
+
+{{ spofs }}
+
+## Pre-computed Cascade Risks
+
+{{ cascade_risks }}
+
+## Task
+
+Output ONLY valid JSON:
+{
+  "resilience_score": 0,
+  "critical_vulnerabilities": ["..."],
+  "rpo_rto_feasible": true,
+  "executive_summary": "2-3 sentence summary"
+}
+
+Rules:
+- resilience_score: 0–10 integer. Start at 10. -2 per CRITICAL SPOF, -1 per HIGH cascade, -1 if RPO/RTO not feasible given the SPOFs
+- critical_vulnerabilities: max 5 items, most impactful first
+- rpo_rto_feasible: true if the architecture can meet the stated availability target given the failure modes

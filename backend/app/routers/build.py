@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import uuid4
 
 from bson import ObjectId
@@ -143,6 +145,30 @@ def _artifacts_to_files(artifacts: dict) -> list[dict]:
 
 
 
+_OUTPUTS_DIR = Path(__file__).parent.parent.parent / "outputs"
+
+
+def _write_artifacts_sync(project_id: str, artifacts: dict[str, str]) -> None:
+    project_dir = _OUTPUTS_DIR / project_id
+    for rel_path, content in artifacts.items():
+        if not isinstance(content, str):
+            continue
+        parts = Path(rel_path).parts
+        if ".." in parts:
+            logger.warning("Skipping artifact with path traversal: %s", rel_path)
+            continue
+        dest = project_dir / rel_path
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(content, encoding="utf-8")
+
+
+async def _write_artifacts_to_disk(project_id: str, artifacts: dict[str, str]) -> None:
+    try:
+        await asyncio.to_thread(_write_artifacts_sync, project_id, artifacts)
+    except Exception:
+        logger.exception("Failed to write artifacts to disk for project %s", project_id)
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -218,6 +244,7 @@ async def start_build(
                             }
                         },
                     )
+                    await _write_artifacts_to_disk(project_id, artifacts)
                     await projects_col().update_one(
                         {"_id": ObjectId(project_id)},
                         {

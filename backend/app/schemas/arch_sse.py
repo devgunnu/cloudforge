@@ -11,10 +11,6 @@ class ArchSSEStartRequest(BaseModel):
     availability: Optional[str] = None
 
 
-class ArchSSERespondRequest(BaseModel):
-    answers: list[str]
-
-
 class ArchSSEReviewRequest(BaseModel):
     accepted: bool
     changes: Optional[str] = None

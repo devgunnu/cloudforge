@@ -31,6 +31,7 @@ def make_architecture_node(llm):
     """Factory that returns an architecture_node bound to the provided LLM."""
 
     def architecture_node(state: ArchitecturePlannerState) -> dict:
+        logger.info("[architecture] starting — iteration=%d", state.get("arch_iteration_count", 0))
         prompt = render_prompt(
             "architecture",
             budget=state["budget"],
@@ -38,12 +39,12 @@ def make_architecture_node(llm):
             availability=state["availability"],
             prd=state["prd"],
             cloud_provider=state["cloud_provider"],
-            query_results=state["query_results"],
-            kg_explanation=state["kg_explanation"],
+            research_results=state.get("research_results", ""),
             relevant_services=[s.model_dump() for s in state["relevant_services"]],
             arch_iteration_count=state["arch_iteration_count"],
             compliance_gaps=[g.model_dump() for g in state["compliance_gaps"]],
-            eval_feedback=state["eval_feedback"],
+            arch_test_feedback=state.get("arch_test_feedback", ""),
+            arch_test_violations=[v.model_dump() for v in (state.get("arch_test_violations") or [])],
             user_change_requests=state["user_change_requests"],
         )
         messages = [HumanMessage(content=prompt)]
@@ -135,6 +136,8 @@ def make_architecture_node(llm):
                     "error_message": f"Architecture generation failed: {str(e2)}",
                 }
 
+        nodes_count = len(result.architecture_diagram.nodes) if result.architecture_diagram else 0
+        logger.info("[architecture] done — %d nodes in diagram", nodes_count)
         return {
             "architecture_diagram": result.architecture_diagram,
             "nfr_document": result.nfr_document,

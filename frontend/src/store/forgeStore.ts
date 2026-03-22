@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { authHeaders } from '@/lib/forge-agents';
+import { authHeaders, getProjectFiles, getFileContent, saveFileContent } from '@/lib/forge-agents';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -93,6 +93,7 @@ interface ForgeState {
   deployLog: string[];
   deployModalOpen: boolean;
   currentProjectId: string | null;
+  dirtyFiles: Record<string, true>;
 
   // Actions
   setStageStatus: (stage: ForgeStage, status: StageStatus) => void;
@@ -113,6 +114,10 @@ interface ForgeState {
   setDeployModalOpen: (open: boolean) => void;
   setCurrentProjectId: (id: string | null) => void;
   hydrateProject: (projectId: string) => Promise<void>;
+  updateFileContent: (id: string, content: string) => void;
+  saveFile: (projectId: string, fileId: string) => Promise<boolean>;
+  markDirty: (id: string) => void;
+  markClean: (id: string) => void;
 }
 
 // ── Stage order ───────────────────────────────────────────────────────────────
@@ -175,6 +180,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
   deployLog: [],
   deployModalOpen: false,
   currentProjectId: null,
+  dirtyFiles: {},
 
   setStageStatus: (stage, status) =>
     set((state) => ({
@@ -277,6 +283,35 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
   setDeployModalOpen: (open) => set({ deployModalOpen: open }),
 
   setCurrentProjectId: (id) => set({ currentProjectId: id }),
+
+  updateFileContent: (id, content) =>
+    set((state) => {
+      const existing = state.generatedFiles[id];
+      if (!existing) return state;
+      return {
+        generatedFiles: {
+          ...state.generatedFiles,
+          [id]: { ...existing, lines: content.split('\n').map((l) => ({ content: l })) },
+        },
+      };
+    }),
+
+  saveFile: async (projectId, fileId) => {
+    const file = get().generatedFiles[fileId];
+    if (!file) return false;
+    const content = file.lines.map((l) => l.content).join('\n');
+    return saveFileContent(projectId, file.path, content);
+  },
+
+  markDirty: (id) =>
+    set((state) => ({ dirtyFiles: { ...state.dirtyFiles, [id]: true } })),
+
+  markClean: (id) =>
+    set((state) => {
+      const next = { ...state.dirtyFiles };
+      delete next[id];
+      return { dirtyFiles: next };
+    }),
 
   hydrateProject: async (projectId: string) => {
     const headers = authHeaders();
@@ -382,6 +417,44 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
           }
         }
         // 404 → silently skip
+      } catch { /* network error — skip */ }
+    }
+
+    // ── Generated files hydration ───────────────────────────────────────────
+    const { generatedFiles } = get();
+    if (Object.keys(generatedFiles).length === 0) {
+      try {
+        const fileList = await getProjectFiles(projectId);
+        if (fileList.length > 0) {
+          const langMap: Record<string, string> = {
+            tf: 'hcl',
+            py: 'python',
+            ts: 'typescript',
+            js: 'javascript',
+            yaml: 'yaml',
+            yml: 'yaml',
+            json: 'json',
+            sh: 'bash',
+          };
+          let idx = 0;
+          for (const entry of fileList) {
+            const fileData = await getFileContent(projectId, entry.path);
+            if (!fileData) continue;
+            const ext = entry.name.includes('.') ? entry.name.split('.').pop()! : 'text';
+            const file: GeneratedFile = {
+              id: `hydrated-${idx++}`,
+              name: entry.name,
+              path: entry.path,
+              lang: entry.lang || langMap[ext] || ext,
+              status: 'new',
+              lines: fileData.content.split('\n').map((l) => ({ content: l })),
+            };
+            get().addGeneratedFile(file);
+          }
+          set((state) => ({
+            stageStatus: { ...state.stageStatus, build: 'done' },
+          }));
+        }
       } catch { /* network error — skip */ }
     }
   },

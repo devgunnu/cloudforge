@@ -147,10 +147,12 @@ export interface Agent2StepCallback {
 }
 
 export const AGENT2_STEPS = [
-  'Parsing NFR constraints',
-  'Graph traversal',
-  'Conflict resolution',
-  'Generating explanation',
+  'Generating architecture',
+  'Discovering services',
+  'Simulating load',
+  'Resilience analysis',
+  'Compliance check',
+  'Architecture testing',
 ] as const;
 
 function _mapNodeType(service: string): ForgeArchNode['type'] {
@@ -187,7 +189,7 @@ export async function runAgent2(
       try {
         const event = JSON.parse(data);
         if (event.step !== undefined) {
-          onStep?.(event.step - 1, 7);
+          onStep?.(event.step - 1, AGENT2_STEPS.length);
         }
         if (event.type === 'error') {
           throw new Error((event.message as string) || 'Architecture generation failed');
@@ -304,6 +306,30 @@ export async function runAgent3(
   void architectureData;
 
   return files;
+}
+
+// ── File API ──────────────────────────────────────────────────────────────────
+
+export async function getProjectFiles(projectId: string): Promise<Array<{ path: string; name: string; lang: string }>> {
+  const resp = await fetch(`${API_URL}/files/${projectId}`, { headers: authHeaders() });
+  if (!resp.ok) return [];
+  const data = await resp.json();
+  return data.files ?? [];
+}
+
+export async function getFileContent(projectId: string, path: string): Promise<{ path: string; content: string; lang: string } | null> {
+  const resp = await fetch(`${API_URL}/files/${projectId}/content?path=${encodeURIComponent(path)}`, { headers: authHeaders() });
+  if (!resp.ok) return null;
+  return resp.json();
+}
+
+export async function saveFileContent(projectId: string, path: string, content: string): Promise<boolean> {
+  const resp = await fetch(`${API_URL}/files/${projectId}/content`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ path, content }),
+  });
+  return resp.ok;
 }
 
 // ── Deploy agent ──────────────────────────────────────────────────────────────

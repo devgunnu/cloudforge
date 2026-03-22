@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { ForgeArchNode, ForgeArchEdge } from '@/store/forgeStore';
-import { AWS_ICONS, type AwsIconKey } from '@/lib/aws-icons';
+import { AWS_ICONS } from '@/lib/aws-icons';
 
 /* ── Types ──────────────────────────────────────────────────────────────────── */
 
@@ -88,31 +88,6 @@ interface NodeConfigData {
   useCases: string[];
   docsUrl: string;
 }
-
-const SERVICE_TO_ICON: Record<string, AwsIconKey> = {
-  lambda: 'lambda',
-  s3: 's3',
-  apigateway: 'apigateway',
-  sqs: 'sqs',
-  eventbridge: 'eventbridge',
-  bedrock: 'bedrock',
-  neptune: 'neptune',
-  amplify: 'amplify',
-  dynamodb: 'dynamodb',
-  rds: 'rds',
-  cloudfront: 'cloudfront',
-  sns: 'sns',
-  cognito: 'generic',
-  ecs: 'generic',
-  stepfunctions: 'generic',
-  route53: 'generic',
-  elb: 'generic',
-  ec2: 'generic',
-  eks: 'generic',
-  kinesis: 'generic',
-  internet: 'internet',
-  generic: 'generic',
-};
 
 const AWS_SERVICE_CONFIG: Record<AWSServiceId, ServiceConfig> = {
   lambda:        { bg: '#FF9900', shape: 'circle',        abbr: 'λ'   },
@@ -599,8 +574,8 @@ export function convertForgeNodes(forgeNodes: ForgeArchNode[]): DrawIONode[] {
   return forgeNodes.map((n, i) => ({
     id: n.id,
     type: 'service' as const,
-    x: n.x ?? (i % 4) * 180 + 40,
-    y: n.y ?? Math.floor(i / 4) * 160 + 40,
+    x: n.x ?? (i % 4) * 200 + 60,
+    y: n.y ?? Math.floor(i / 4) * 180 + 60,
     label: n.label,
     sublabel: n.sublabel,
     service: mapForgeNodeToService(n),
@@ -1081,10 +1056,6 @@ function ServiceNode({ node, iconSize, isSelected, onSelect, onHover, onLeave }:
 
   const service = node.service ?? 'generic';
   const config = AWS_SERVICE_CONFIG[service];
-  const iconKey = SERVICE_TO_ICON[service] ?? 'generic';
-  const icon = AWS_ICONS[iconKey];
-  const [vbW, vbH] = icon.viewBox.split(' ').slice(2).map(Number);
-  const scale = iconSize / Math.max(vbW, vbH);
 
   return (
     <g
@@ -1105,7 +1076,7 @@ function ServiceNode({ node, iconSize, isSelected, onSelect, onHover, onLeave }:
           y={node.y - 5}
           width={iconSize + 10}
           height={iconSize + 10}
-          rx={12}
+          rx={14}
           fill="none"
           stroke={config.bg}
           strokeWidth={2}
@@ -1113,7 +1084,7 @@ function ServiceNode({ node, iconSize, isSelected, onSelect, onHover, onLeave }:
           opacity={0.9}
         />
       )}
-      {/* Background shape */}
+      {/* Outer colored badge (AWS category color) */}
       {config.shape === 'circle' ? (
         <circle
           cx={cx}
@@ -1127,41 +1098,46 @@ function ServiceNode({ node, iconSize, isSelected, onSelect, onHover, onLeave }:
           y={node.y}
           width={iconSize}
           height={iconSize}
-          rx={8}
+          rx={10}
           fill={config.bg}
         />
       )}
-      {/* Real AWS icon path scaled to fit iconSize */}
-      <g transform={`translate(${node.x}, ${node.y}) scale(${scale})`}>
-        <g transform={icon.glyphTransform}>
-          <path d={icon.path} fill={config.iconColor ?? 'white'} />
-        </g>
-      </g>
-      {/* Primary label */}
+      {/* Inner white badge (AWS icon style) */}
+      {config.shape !== 'circle' && (
+        <rect
+          x={node.x + 8}
+          y={node.y + 8}
+          width={iconSize - 16}
+          height={iconSize - 16}
+          rx={6}
+          fill="white"
+          fillOpacity={0.92}
+        />
+      )}
+      {/* Service abbreviation text */}
       <text
         x={cx}
-        y={node.y + iconSize + 14}
+        y={node.y + iconSize / 2 + 5}
         textAnchor="middle"
-        fill="#222"
+        fill={config.shape === 'circle' ? 'white' : config.bg}
+        fontSize={config.abbr.length > 2 ? 11 : 13}
+        fontWeight="800"
+        fontFamily="Arial, sans-serif"
+      >
+        {config.abbr}
+      </text>
+      {/* Primary label below icon */}
+      <text
+        x={cx}
+        y={node.y + iconSize + 16}
+        textAnchor="middle"
+        fill="#1a1a2e"
         fontSize={11}
         fontFamily="Arial, sans-serif"
         fontWeight="600"
       >
         {node.label}
       </text>
-      {/* Sublabel */}
-      {node.sublabel && (
-        <text
-          x={cx}
-          y={node.y + iconSize + 27}
-          textAnchor="middle"
-          fill="#666"
-          fontSize={10}
-          fontFamily="Arial, sans-serif"
-        >
-          {node.sublabel}
-        </text>
-      )}
     </g>
   );
 }
@@ -1265,8 +1241,13 @@ export default function ArchDiagram({
     };
   }, []);
 
-  const ICON_SIZE = 56;
+  const ICON_SIZE = 64;
   const PAD = 60;
+
+  const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<{ mx: number; my: number; tx: number; ty: number } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const selectedNodeId = isControlled ? (controlledSelectedNodeId ?? null) : internalSelectedId;
   // ConfigPanel only shown in uncontrolled mode (parent provides its own inspector)
@@ -1294,6 +1275,51 @@ export default function ArchDiagram({
   const handleLeave = useCallback(() => {
     if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
     setTooltip(null);
+  }, []);
+
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setTransform((prev) => {
+      const newScale = Math.min(3, Math.max(0.3, prev.scale * delta));
+      if (!containerRef.current) return prev;
+      const rect = containerRef.current.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      return {
+        scale: newScale,
+        x: mx - (mx - prev.x) * (newScale / prev.scale),
+        y: my - (my - prev.y) * (newScale / prev.scale),
+      };
+    });
+  }, []);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    // Only initiate pan on direct container clicks (not on nodes)
+    if ((e.target as Element).closest('[role="button"]')) return;
+    setIsDragging(true);
+    dragStartRef.current = { mx: e.clientX, my: e.clientY, tx: transform.x, ty: transform.y };
+  }, [transform.x, transform.y]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isDragging || !dragStartRef.current) return;
+    const dx = e.clientX - dragStartRef.current.mx;
+    const dy = e.clientY - dragStartRef.current.my;
+    setTransform((prev) => ({
+      ...prev,
+      x: dragStartRef.current!.tx + dx,
+      y: dragStartRef.current!.ty + dy,
+    }));
+  }, [isDragging]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+    dragStartRef.current = null;
+  }, []);
+
+  const handleMouseLeaveContainer = useCallback(() => {
+    setIsDragging(false);
+    dragStartRef.current = null;
   }, []);
 
   const serviceNodes = nodes.filter(
@@ -1349,21 +1375,30 @@ export default function ArchDiagram({
       role="img"
       aria-label={ariaLabel}
     >
-      {/* SVG diagram — shrinks when panel is open */}
+      {/* SVG diagram — pan/zoom canvas */}
       <div
+        ref={containerRef}
         style={{
           flex: 1,
-          overflow: 'auto',
+          overflow: 'hidden',
           minWidth: 0,
           transition: 'flex 0.25s ease',
+          cursor: isDragging ? 'grabbing' : 'grab',
+          position: 'relative',
         }}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseLeaveContainer}
       >
         <svg
-          width={svgWidth}
-          height={svgHeight}
+          width="100%"
+          height="100%"
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          style={{ display: 'block', minWidth: '100%' }}
+          style={{ display: 'block', position: 'absolute', inset: 0 }}
           aria-hidden="true"
+          preserveAspectRatio="xMidYMid meet"
         >
           <defs>
             <marker
@@ -1388,45 +1423,93 @@ export default function ArchDiagram({
             </marker>
           </defs>
 
-          {/* Layer 1: Group containers */}
-          {nodes
-            .filter((n) => n.type === 'group')
-            .map((node) => (
-              <GroupContainer key={node.id} node={node} />
-            ))}
+          <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
+            {/* Layer 1: Group containers */}
+            {nodes
+              .filter((n) => n.type === 'group')
+              .map((node) => (
+                <GroupContainer key={node.id} node={node} />
+              ))}
 
-          {/* Layer 2: Edges */}
-          {edges.map((edge, i) => (
-            <DiagramEdge
-              key={`${edge.from}-${edge.to}-${i}`}
-              edge={edge}
-              nodeMap={nodeMap}
-              iconSize={ICON_SIZE}
-            />
-          ))}
-
-          {/* Layer 3: Service and user nodes */}
-          {nodes
-            .filter((n) => n.type === 'service' || n.type === 'user')
-            .map((node) => (
-              <ServiceNode
-                key={node.id}
-                node={node}
+            {/* Layer 2: Edges */}
+            {edges.map((edge, i) => (
+              <DiagramEdge
+                key={`${edge.from}-${edge.to}-${i}`}
+                edge={edge}
+                nodeMap={nodeMap}
                 iconSize={ICON_SIZE}
-                isSelected={node.id === selectedNodeId}
-                onSelect={handleSelect}
-                onHover={handleHover}
-                onLeave={handleLeave}
               />
             ))}
 
-          {/* Layer 4: Section labels */}
-          {nodes
-            .filter((n) => n.type === 'sectionLabel')
-            .map((node) => (
-              <SectionLabel key={node.id} node={node} />
-            ))}
+            {/* Layer 3: Service and user nodes */}
+            {nodes
+              .filter((n) => n.type === 'service' || n.type === 'user')
+              .map((node) => (
+                <ServiceNode
+                  key={node.id}
+                  node={node}
+                  iconSize={ICON_SIZE}
+                  isSelected={node.id === selectedNodeId}
+                  onSelect={handleSelect}
+                  onHover={handleHover}
+                  onLeave={handleLeave}
+                />
+              ))}
+
+            {/* Layer 4: Section labels */}
+            {nodes
+              .filter((n) => n.type === 'sectionLabel')
+              .map((node) => (
+                <SectionLabel key={node.id} node={node} />
+              ))}
+          </g>
         </svg>
+
+        {/* Zoom controls overlay */}
+        <div
+          style={{
+            position: 'absolute',
+            bottom: 12,
+            right: 12,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            zIndex: 10,
+          }}
+          aria-label="Zoom controls"
+        >
+          {[
+            { label: '+', title: 'Zoom in', action: () => setTransform((p) => ({ ...p, scale: Math.min(3, p.scale * 1.2) })) },
+            { label: '−', title: 'Zoom out', action: () => setTransform((p) => ({ ...p, scale: Math.max(0.3, p.scale / 1.2) })) },
+            { label: '⊡', title: 'Reset view', action: () => setTransform({ x: 0, y: 0, scale: 1 }) },
+          ].map(({ label, title, action }) => (
+            <button
+              key={label}
+              type="button"
+              onClick={(e) => { e.stopPropagation(); action(); }}
+              title={title}
+              aria-label={title}
+              style={{
+                width: 28,
+                height: 28,
+                background: 'rgba(20,20,35,0.82)',
+                border: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 6,
+                color: '#dde',
+                fontSize: 15,
+                lineHeight: 1,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontFamily: 'Arial, sans-serif',
+                userSelect: 'none',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Config side panel */}
