@@ -12,6 +12,8 @@ class QuestionOptionSchema(BaseModel):
     """Schema for a single option in a clarifying question."""
     label: str
     value: str
+    description: str = ""
+    impact: str = ""
     is_custom: bool = False
 
 
