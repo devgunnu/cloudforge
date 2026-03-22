@@ -23,7 +23,7 @@ Copy `.env.example` to `.env` and adjust values if needed.
 Important settings:
 
 - `OLLAMA_BASE_URL` (default: `http://localhost:11434`)
-- `QWEN_MODEL` (default: `qwen3.5:latest`)
+- `LLM_MODEL` (default: `gemma3:latest`)
 - `ENABLE_WEB_SEARCH` (`true`/`false`)
 - `ENABLE_TINYFISH_SEARCH` (`true`/`false`)
 - `TINYFISH_TIMEOUT_SECONDS` (default: `25`)

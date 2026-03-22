@@ -94,6 +94,41 @@ def _normalize_options_metadata(payload: ClarifierOutput) -> None:
                     option.impact = "This choice directly influences service sizing, architecture complexity, and cost."
 
 
+def _normalize_question(text: str) -> str:
+    return " ".join(text.strip().lower().split())
+
+
+def _ingest_selected_answers(state: AgentState) -> None:
+    """Convert selected answers into stable Q&A history before research mutates questions."""
+    if not state.selected_option_answers:
+        return
+
+    for q_idx, selected_value in state.selected_option_answers.items():
+        if q_idx >= len(state.questions_with_options):
+            continue
+
+        question_obj = state.questions_with_options[q_idx]
+        question_text = question_obj.original_question or question_obj.question
+
+        matched_option = None
+        for opt in question_obj.options:
+            if opt.value == selected_value:
+                matched_option = opt
+                break
+
+        if matched_option:
+            answer_text = matched_option.label if not matched_option.is_custom else selected_value
+            logger.info("User selected option for '%s': %s", question_text, answer_text)
+        else:
+            answer_text = selected_value
+            logger.info("User provided custom input for '%s': %s", question_text, answer_text)
+
+        state.user_answers.append(answer_text)
+        state.answered_qa_pairs.append({"question": question_text, "answer": answer_text})
+
+    state.selected_option_answers = {}
+
+
 def _fallback_options_for_question(question: str) -> list[QuestionOption]:
     q = question.lower()
 
@@ -230,6 +265,7 @@ def _ensure_questions_have_options(payload: ClarifierOutput) -> None:
 def user_input_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     model_state = _as_state(state)
     logger.info("Processing user input")
+    _ingest_selected_answers(model_state)
     model_state.status = "running"
     return _dump_state(model_state)
 
@@ -254,7 +290,9 @@ def research_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     qa_history = ""
     if model_state.answered_qa_pairs:
         qa_history = "Previously Answered Questions:\n"
-        for q, a in model_state.answered_qa_pairs:
+        for qa_pair in model_state.answered_qa_pairs:
+            q = qa_pair.get("question", "")
+            a = qa_pair.get("answer", "")
             qa_history += f"Q: {q}\nA: {a}\n\n"
         qa_history += "\n"
     
@@ -300,8 +338,25 @@ def research_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
         (payload.follow_up_questions[0] if payload.follow_up_questions else "none"),
     )
 
-    model_state.follow_up_questions = payload.follow_up_questions[:8]
-    model_state.questions_with_options = payload.questions_with_options[:8]
+    answered_questions = {
+        _normalize_question(item.get("question", ""))
+        for item in model_state.answered_qa_pairs
+        if item.get("question")
+    }
+
+    filtered_qwo: list[QuestionWithOptions] = []
+    for qwo in payload.questions_with_options:
+        q_text = qwo.original_question or qwo.question
+        if _normalize_question(q_text) in answered_questions:
+            continue
+        filtered_qwo.append(qwo)
+
+    filtered_followups = [
+        q for q in payload.follow_up_questions if _normalize_question(q) not in answered_questions
+    ]
+
+    model_state.follow_up_questions = filtered_followups[:8]
+    model_state.questions_with_options = filtered_qwo[:8]
     model_state.research_queries = _augment_research_queries(model_state, payload.research_queries)
     model_state.is_information_enough = payload.is_information_enough
     logger.info(
@@ -360,35 +415,6 @@ def web_search_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
 def information_gate_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     model_state = _as_state(state)
     logger.info("Checking if product requirements are clear enough")
-
-    # If user provided selected option answers, convert them to natural language user answers
-    # and track Q&A pairs for clarity in subsequent clarification rounds.
-    if model_state.selected_option_answers:
-        for q_idx, selected_value in model_state.selected_option_answers.items():
-            if q_idx < len(model_state.questions_with_options):
-                question_obj = model_state.questions_with_options[q_idx]
-                # Find matching option to create a natural language response
-                matched_option = None
-                for opt in question_obj.options:
-                    if opt.value == selected_value:
-                        matched_option = opt
-                        break
-                
-                if matched_option:
-                    # Predefined option: use label for display
-                    response = matched_option.label if not matched_option.is_custom else selected_value
-                    logger.info("User selected option for '%s': %s", question_obj.original_question, response)
-                    model_state.user_answers.append(response)
-                    # Track Q&A pair for next round's clarification
-                    model_state.answered_qa_pairs.append((question_obj.original_question, response))
-                else:
-                    # No matching option found - treat as custom freeform input
-                    # (user bypassed option selection and provided direct text)
-                    logger.info("User provided custom input for '%s': %s", question_obj.original_question, selected_value)
-                    model_state.user_answers.append(selected_value)
-                    # Track Q&A pair for next round's clarification
-                    model_state.answered_qa_pairs.append((question_obj.original_question, selected_value))
-        model_state.selected_option_answers = {}  # Clear after processing
     
     if not model_state.is_information_enough:
         model_state.status = "needs_input"
