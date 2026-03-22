@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCanvasStore } from '@/store/canvasStore';
 import type { DeployStatus } from '@/store/canvasStore';
+import { useProjectStore } from '@/store/projectStore';
 
 function DeployButtonContent({ status }: { status: DeployStatus }) {
   if (status === 'idle') {
@@ -66,6 +67,8 @@ export default function Navbar() {
   const toggleTopologyPreview = useCanvasStore((s) => s.toggleTopologyPreview);
   const showTopologyPreview = useCanvasStore((s) => s.showTopologyPreview);
 
+  const currentProjectId = useProjectStore((s) => s.currentProjectId);
+
   const isDeploying = deployStatus === 'generating' || deployStatus === 'deploying';
   const nodeCount = nodes.length;
 
@@ -74,8 +77,8 @@ export default function Navbar() {
       resetDeploy();
       return;
     }
-    if (deployStatus === 'idle') {
-      void startDeploy();
+    if (deployStatus === 'idle' && currentProjectId) {
+      void startDeploy(currentProjectId);
     }
   };
 

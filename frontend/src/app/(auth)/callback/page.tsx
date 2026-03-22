@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { jwtDecode } from 'jwt-decode';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -12,7 +12,7 @@ interface JWTPayload {
   exp: number;
 }
 
-export default function CallbackPage() {
+function CallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const setAuth = useAuthStore((state) => state.setAuth);
@@ -42,5 +42,19 @@ export default function CallbackPage() {
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
       <p>Finalizing login...</p>
     </div>
+  );
+}
+
+export default function CallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+          <p>Finalizing login...</p>
+        </div>
+      }
+    >
+      <CallbackInner />
+    </Suspense>
   );
 }
