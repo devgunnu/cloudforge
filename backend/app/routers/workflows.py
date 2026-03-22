@@ -27,7 +27,13 @@ def _to_response(state: AgentState) -> WorkflowResponse:
             question=q.question,
             original_question=q.original_question,
             options=[
-                QuestionOptionSchema(label=opt.label, value=opt.value, is_custom=opt.is_custom)
+                QuestionOptionSchema(
+                    label=opt.label,
+                    value=opt.value,
+                    description=opt.description,
+                    impact=opt.impact,
+                    is_custom=opt.is_custom,
+                )
                 for opt in q.options
             ]
         )
