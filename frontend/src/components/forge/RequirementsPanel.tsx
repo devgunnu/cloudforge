@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForgeStore } from '@/store/forgeStore';
 
@@ -31,6 +31,8 @@ function PulsingDot() {
 
 export default function RequirementsPanel() {
   const router = useRouter();
+  const params = useParams();
+  const id = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
   const {
     prdText,
     setPrdText,
@@ -71,7 +73,7 @@ export default function RequirementsPanel() {
   function handleGenerateArchitecture() {
     if (!isDone) return;
     advanceStage();
-    router.push('/app/architecture');
+    router.push(`/app/${id}/architecture`);
   }
 
   return (

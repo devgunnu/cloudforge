@@ -34,8 +34,10 @@ interface ProjectStoreState {
   apiProjects: ApiProject[];
   currentProjectId: string | null;
   isLoading: boolean;
+  loadError: string | null;
   loadProjects: (token: string) => Promise<void>;
   createApiProject: (name: string, token: string) => Promise<ApiProject>;
+  deleteApiProject: (id: string, token: string) => Promise<void>;
   setCurrentProjectId: (id: string | null) => void;
 }
 
@@ -56,41 +58,46 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
   apiProjects: [],
   currentProjectId: null,
   isLoading: false,
+  loadError: null,
 
   loadProjects: async (token: string) => {
-    set({ isLoading: true });
+    set({ isLoading: true, loadError: null });
     try {
       const resp = await fetch(`${API_URL}/projects`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (resp.ok) {
-        const data: ApiProject[] = await resp.json();
-        const now = Date.now();
-        const projects: Project[] = data.map((p) => {
-          const updatedMs = new Date(p.updated_at).getTime();
-          const diffMs = now - updatedMs;
-          const diffMin = Math.floor(diffMs / 60000);
-          const diffHr = Math.floor(diffMs / 3600000);
-          let updatedAt: string;
-          if (diffMin < 60) {
-            updatedAt = `${diffMin}m ago`;
-          } else if (diffHr < 24) {
-            updatedAt = `${diffHr}h ago`;
-          } else {
-            updatedAt = new Date(p.updated_at).toLocaleDateString();
-          }
-          return {
-            id: p.id,
-            name: p.name,
-            description: p.description ?? '',
-            stage: p.stage as ProjectStage,
-            status: p.status as ProjectStatus,
-            region: p.region ?? 'us-east-1',
-            updatedAt,
-          };
-        });
-        set({ apiProjects: data, projects });
+      if (!resp.ok) {
+        set({ loadError: `Failed to load projects (${resp.status})` });
+        return;
       }
+      const data: ApiProject[] = await resp.json();
+      const now = Date.now();
+      const projects: Project[] = data.map((p) => {
+        const updatedMs = new Date(p.updated_at).getTime();
+        const diffMs = now - updatedMs;
+        const diffMin = Math.floor(diffMs / 60000);
+        const diffHr = Math.floor(diffMs / 3600000);
+        let updatedAt: string;
+        if (diffMin < 60) {
+          updatedAt = `${diffMin}m ago`;
+        } else if (diffHr < 24) {
+          updatedAt = `${diffHr}h ago`;
+        } else {
+          updatedAt = new Date(p.updated_at).toLocaleDateString();
+        }
+        return {
+          id: p.id,
+          name: p.name,
+          description: p.description ?? '',
+          stage: p.stage as ProjectStage,
+          status: p.status as ProjectStatus,
+          region: p.region ?? 'us-east-1',
+          updatedAt,
+        };
+      });
+      set({ apiProjects: data, projects });
+    } catch (err) {
+      set({ loadError: err instanceof Error ? err.message : 'Failed to load projects' });
     } finally {
       set({ isLoading: false });
     }
@@ -106,6 +113,18 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
     const project: ApiProject = await resp.json();
     set((state) => ({ apiProjects: [...state.apiProjects, project] }));
     return project;
+  },
+
+  deleteApiProject: async (id: string, token: string) => {
+    const resp = await fetch(`${API_URL}/projects/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!resp.ok) throw new Error('Failed to delete project');
+    set((state) => ({
+      apiProjects: state.apiProjects.filter((p) => p.id !== id),
+      projects: state.projects.filter((p) => p.id !== id),
+    }));
   },
 
   setCurrentProjectId: (id) => set({ currentProjectId: id }),

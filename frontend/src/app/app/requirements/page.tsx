@@ -1,5 +1,5 @@
-import RequirementsPanel from '@/components/forge/RequirementsPanel';
+import { redirect } from 'next/navigation';
 
-export default function RequirementsPage() {
-  return <RequirementsPanel />;
+export default function OldRequirementsPage() {
+  redirect('/dashboard');
 }

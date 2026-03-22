@@ -1257,7 +1257,7 @@ export default function ForgeChatPanel() {
       aria-label="Agent chat panel"
     >
       {/* Agent pill */}
-      <div
+      {/* <div
         style={{
           padding: '10px',
           borderBottom: '0.5px solid var(--lp-border)',
@@ -1280,7 +1280,7 @@ export default function ForgeChatPanel() {
             {FORGE_STAGE_LABELS[activeStage]} agent is running…
           </p>
         )}
-      </div>
+      </div> */}
 
       {/* Tabs */}
       <div
