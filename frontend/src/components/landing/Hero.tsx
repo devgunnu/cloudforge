@@ -273,24 +273,6 @@ export default function Hero() {
         >
           Start building free <span style={{ fontSize: '17px', lineHeight: 1 }}>→</span>
         </Link>
-        <Link
-          href="/dashboard?demo=true"
-          className="lp-btn-ghost"
-          style={{
-            fontFamily: 'var(--font-inter), system-ui, sans-serif',
-            fontSize: '15px',
-            fontWeight: 400,
-            padding: '16px 24px',
-            borderRadius: '8px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            border: '0.5px solid rgba(45,212,191,0.5)',
-            color: 'var(--lp-accent)',
-          }}
-        >
-          Try Live Demo →
-        </Link>
         <a
           href="https://github.com/cloudforge-dev/cloudforge"
           className="lp-btn-ghost"
