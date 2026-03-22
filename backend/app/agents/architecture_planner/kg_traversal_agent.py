@@ -170,7 +170,7 @@ def make_nfr_parser_node(llm, conn):
 # ---------------------------------------------------------------------------
 
 
-def make_community_router_node(community_summaries: dict):
+def make_community_router_node(community_summaries: dict, conn=None):
     def community_router_node(state: ArchitecturePlannerState) -> dict:
         if not community_summaries or not _EMBEDDINGS_AVAILABLE:
             return {"kg_communities": [], "current_node": "kg_community_router"}
@@ -187,8 +187,25 @@ def make_community_router_node(community_summaries: dict):
         scores = _cosine_similarity(query_embedding, summary_embeddings)[0]
         top_k = min(3, len(ids))
         top_indices = _np.argsort(scores)[-top_k:][::-1].tolist()
-        top_communities = [int(ids[i]) for i in top_indices]
+        router_communities = {int(ids[i]) for i in top_indices}
 
+        # Also include the communities that the seed constraint nodes themselves
+        # belong to — this guarantees their direct neighbours are always reachable
+        # even when the semantic router targets different thematic clusters.
+        seed_communities: set[int] = set()
+        if conn and state["kg_constraints"]:
+            try:
+                result = conn.execute(
+                    "MATCH (n:Node) WHERE n.id IN $ids RETURN DISTINCT n.community",
+                    {"ids": state["kg_constraints"]},
+                ).get_as_df()
+                seed_communities = {
+                    int(c) for c in result.iloc[:, 0].tolist() if c is not None and int(c) >= 0
+                }
+            except Exception:
+                pass
+
+        top_communities = sorted(router_communities | seed_communities)
         return {"kg_communities": top_communities, "current_node": "kg_community_router"}
 
     return community_router_node
@@ -219,6 +236,9 @@ def make_graph_traversal_node(conn):
         # ---- RECOMMENDS + REQUIRES + ENABLES ----
         communities = state.get("kg_communities", [])
         community_clause = "AND b.community IN $communities " if communities else ""
+        rec_params: dict = {"frontier": frontier}
+        if communities:
+            rec_params["communities"] = communities
         try:
             rec_result = conn.execute(
                 "MATCH (a:Node)-[r:REL]->(b:Node) "
@@ -228,7 +248,7 @@ def make_graph_traversal_node(conn):
                 "AND r.conflicted = false "
                 + community_clause +
                 "RETURN a.id, b.id, b.label, r.type, r.reason",
-                {"frontier": frontier, "communities": communities},
+                rec_params,
             )
             for row in rec_result.get_as_df().to_dict("records"):
                 b_id = row["b.id"]
@@ -367,7 +387,7 @@ def build_kg_subgraph(
 
     builder = StateGraph(ArchitecturePlannerState)
     builder.add_node("nfr_parser", make_nfr_parser_node(llm, conn))
-    builder.add_node("community_router", make_community_router_node(community_summaries))
+    builder.add_node("community_router", make_community_router_node(community_summaries, conn))
     builder.add_node("kg_traversal", make_graph_traversal_node(conn))
     builder.add_node("kg_explainer", make_kg_explainer_node(llm))
 

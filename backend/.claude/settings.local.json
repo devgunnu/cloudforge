@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(python:*)",
-      "WebFetch(domain:docs.langchain.com)"
+      "WebFetch(domain:docs.langchain.com)",
+      "Bash(ls .venv/Scripts/pytest*)",
+      "Bash(ls .venv/Scripts/py*)",
+      "Bash(.venv/Scripts/pip install:*)",
+      "Bash(.venv/Scripts/pytest tests/test_kg_rag.py -v -s -m \"not integration\")",
+      "Bash(.venv/Scripts/python.exe -c \"import pytest; print\\(pytest.__version__\\)\")",
+      "Bash(uv add:*)",
+      "Bash(uv run:*)"
     ]
   }
 }
