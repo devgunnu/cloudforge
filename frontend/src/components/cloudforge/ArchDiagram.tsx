@@ -30,6 +30,7 @@ export type AWSServiceId =
   | 'ec2'
   | 'eks'
   | 'kinesis'
+  | 'internet'
   | 'generic';
 
 export interface DrawIONode {
@@ -75,6 +76,8 @@ interface ServiceConfig {
   bg: string;
   shape: 'circle' | 'roundedSquare';
   abbr: string;
+  /** Icon path fill colour — defaults to 'white'. Use '#333' for transparent-bg icons. */
+  iconColor?: string;
 }
 
 interface NodeConfigData {
@@ -107,6 +110,7 @@ const SERVICE_TO_ICON: Record<string, AwsIconKey> = {
   ec2: 'generic',
   eks: 'generic',
   kinesis: 'generic',
+  internet: 'internet',
   generic: 'generic',
 };
 
@@ -130,8 +134,9 @@ const AWS_SERVICE_CONFIG: Record<AWSServiceId, ServiceConfig> = {
   elb:           { bg: '#8C4FFF', shape: 'roundedSquare', abbr: 'ELB' },
   ec2:           { bg: '#FF9900', shape: 'roundedSquare', abbr: 'EC2' },
   eks:           { bg: '#FF9900', shape: 'roundedSquare', abbr: 'EKS' },
-  kinesis:       { bg: '#8C4FFF', shape: 'roundedSquare', abbr: 'KNS' },
-  generic:       { bg: '#545B64', shape: 'roundedSquare', abbr: '?'   },
+  kinesis:       { bg: '#8C4FFF', shape: 'roundedSquare', abbr: 'KNS'            },
+  internet:      { bg: 'none',    shape: 'roundedSquare', abbr: 'NET', iconColor: '#444' },
+  generic:       { bg: '#545B64', shape: 'roundedSquare', abbr: '?'               },
 };
 
 const SERVICE_CONFIG_DATA: Partial<Record<AWSServiceId, NodeConfigData>> = {
@@ -415,6 +420,17 @@ const SERVICE_CONFIG_DATA: Partial<Record<AWSServiceId, NodeConfigData>> = {
     useCases: ['Real-time analytics', 'Log ingestion', 'IoT data streams'],
     docsUrl: 'https://docs.aws.amazon.com/kinesis',
   },
+  internet: {
+    description: 'External internet traffic entering the system.',
+    category: 'External',
+    tier: 'External',
+    configProps: [
+      { key: 'Protocol', value: 'HTTPS' },
+      { key: 'Auth', value: 'API Key / OAuth' },
+    ],
+    useCases: ['External API consumers', 'Public web traffic', 'Third-party integrations'],
+    docsUrl: 'https://aws.amazon.com/architecture',
+  },
   generic: {
     description: 'AWS service node.',
     category: 'AWS',
@@ -428,60 +444,104 @@ const SERVICE_CONFIG_DATA: Partial<Record<AWSServiceId, NodeConfigData>> = {
 /* ── Default Mock Data ───────────────────────────────────────────────────────── */
 
 const DEFAULT_NODES: DrawIONode[] = [
-  { id: 'sec1', type: 'sectionLabel', x: 20, y: 10, label: 'Live Search' },
-  { id: 'users', type: 'user', x: 60, y: 60, label: 'Students' },
-  { id: 'amplify', type: 'service', x: 200, y: 130, label: 'AWS Amplify', service: 'amplify' },
-  { id: 'lambda1', type: 'service', x: 340, y: 60, label: 'Lambda', sublabel: 'Save Resume', service: 'lambda' },
-  { id: 's3', type: 'service', x: 480, y: 20, label: 'Amazon S3', service: 's3' },
-  { id: 'lambda2', type: 'service', x: 340, y: 140, label: 'Lambda', sublabel: 'Resume Parser', service: 'lambda' },
-  { id: 'bedrock1', type: 'service', x: 490, y: 130, label: 'Nova Pro', service: 'bedrock' },
-  { id: 'lambda3', type: 'service', x: 340, y: 220, label: 'Lambda', sublabel: 'Save Profile', service: 'lambda' },
-  { id: 'apigw', type: 'service', x: 340, y: 300, label: 'API Gateway', service: 'apigateway' },
-  { id: 'lambda4', type: 'service', x: 200, y: 360, label: 'Lambda', service: 'lambda' },
-  { id: 'g_agentcore', type: 'group', x: 30, y: 440, width: 560, height: 280, label: 'Agentcore', groupColor: '#8C4FFF' },
-  { id: 'g_runtime', type: 'group', x: 140, y: 470, width: 360, height: 240, label: 'Runtime', groupColor: '#999' },
-  { id: 'routing', type: 'service', x: 170, y: 530, label: 'Routing Agent', service: 'bedrock' },
-  { id: 'career', type: 'service', x: 330, y: 490, label: 'Career Exploration Agent', service: 'bedrock' },
-  { id: 'jobsearch', type: 'service', x: 330, y: 600, label: 'Job Search Agent', service: 'bedrock' },
-  { id: 'memory', type: 'service', x: 60, y: 510, label: 'Memory', service: 'bedrock' },
-  { id: 'g_tools', type: 'group', x: 620, y: 340, width: 300, height: 360, label: 'Tools', groupColor: '#8C4FFF' },
-  { id: 'bedrock_kb', type: 'service', x: 640, y: 390, label: 'Bedrock Knowledge Base', service: 'bedrock' },
-  { id: 's3_vector', type: 'service', x: 780, y: 390, label: 'S3 Vector store', service: 's3' },
-  { id: 'graphrag', type: 'service', x: 640, y: 520, label: 'Graph RAG', service: 'bedrock' },
-  { id: 'neptune', type: 'service', x: 780, y: 520, label: 'Neptune Graph', service: 'neptune' },
-  { id: 'sec2', type: 'sectionLabel', x: 20, y: 760, label: 'Job Search Batch Process' },
-  { id: 'eb1', type: 'service', x: 80, y: 860, label: 'EventBridge', sublabel: 'trigger 1am', service: 'eventbridge' },
-  { id: 'lambda_q', type: 'service', x: 80, y: 750, label: 'Lambda', sublabel: 'Add to Queue', service: 'lambda' },
-  { id: 'sqs', type: 'service', x: 200, y: 800, label: 'Amazon SQS', service: 'sqs' },
-  { id: 'lambda_pq', type: 'service', x: 200, y: 700, label: 'Lambda', sublabel: 'Process Queue', service: 'lambda' },
-  { id: 'sec3', type: 'sectionLabel', x: 440, y: 760, label: 'Communication Batch Process' },
-  { id: 'eb2', type: 'service', x: 450, y: 860, label: 'EventBridge', sublabel: 'trigger 9am', service: 'eventbridge' },
-  { id: 'lambda_dn', type: 'service', x: 450, y: 750, label: 'Lambda', sublabel: 'Send Daily Notifications', service: 'lambda' },
-  { id: 'ses', type: 'service', x: 620, y: 720, label: 'Simple Email Service', service: 'sns' },
-  { id: 'pinpoint', type: 'service', x: 620, y: 820, label: 'End User Messaging', service: 'sns' },
+  // ── Section labels ─────────────────────────────────────────────────────────
+  { id: 'sec1', type: 'sectionLabel', x: 20,  y: 10,  label: 'Live Search' },
+  { id: 'sec2', type: 'sectionLabel', x: 20,  y: 840, label: 'Job Search Batch Process' },
+  { id: 'sec3', type: 'sectionLabel', x: 460, y: 840, label: 'Communication Batch Process' },
+
+  // ── Live Search ────────────────────────────────────────────────────────────
+  { id: 'users',    type: 'user',    x: 60,  y: 70,  label: 'Students' },
+  { id: 'amplify',  type: 'service', x: 200, y: 140, label: 'AWS Amplify',  service: 'amplify' },
+  { id: 'lambda1',  type: 'service', x: 340, y: 60,  label: 'Lambda', sublabel: 'Save Resume',    service: 'lambda' },
+  { id: 's3_resume',type: 'service', x: 480, y: 20,  label: 'Amazon S3',    service: 's3' },
+  { id: 'lambda2',  type: 'service', x: 340, y: 150, label: 'Lambda', sublabel: 'Resume Parser',  service: 'lambda' },
+  { id: 'bedrock1', type: 'service', x: 490, y: 140, label: 'Nova Pro',      service: 'bedrock' },
+  { id: 'lambda3',  type: 'service', x: 340, y: 240, label: 'Lambda', sublabel: 'Save Profile',   service: 'lambda' },
+  { id: 'apigw',    type: 'service', x: 340, y: 325, label: 'API Gateway',   service: 'apigateway' },
+  { id: 'lambda4',  type: 'service', x: 200, y: 390, label: 'Lambda',        service: 'lambda' },
+
+  // ── Agentcore group ────────────────────────────────────────────────────────
+  { id: 'g_agentcore', type: 'group', x: 28, y: 462, width: 600, height: 320, label: 'Agentcore', groupColor: '#8C4FFF' },
+  { id: 'g_runtime',   type: 'group', x: 150, y: 492, width: 400, height: 270, label: 'Runtime',  groupColor: '#999' },
+
+  { id: 'memory',       type: 'service', x: 55,  y: 520, label: 'Memory',             service: 'bedrock' },
+  { id: 'observability',type: 'service', x: 55,  y: 665, label: 'Observability',       service: 'generic' },
+  { id: 'routing',      type: 'service', x: 185, y: 575, label: 'Routing Agent',       service: 'bedrock' },
+  { id: 'career',       type: 'service', x: 380, y: 510, label: 'Career Exploration Agent', service: 'bedrock' },
+  { id: 'jobsearch',    type: 'service', x: 380, y: 650, label: 'Job Search Agent',    service: 'bedrock' },
+
+  // ── Internet (globe) — above Tools ────────────────────────────────────────
+  { id: 'internet',     type: 'service', x: 710, y: 250, label: 'Internet', service: 'internet' },
+
+  // ── Tools group ────────────────────────────────────────────────────────────
+  { id: 'g_tools', type: 'group', x: 660, y: 370, width: 320, height: 400, label: 'Tools', groupColor: '#8C4FFF' },
+
+  { id: 'bedrock_kb',   type: 'service', x: 680, y: 420, label: 'Bedrock Knowledge Base', service: 'bedrock' },
+  { id: 's3_vector',    type: 'service', x: 840, y: 420, label: 'S3 Vector store',        service: 's3' },
+  { id: 'graphrag',     type: 'service', x: 680, y: 560, label: 'Graph RAG',              service: 'bedrock' },
+  { id: 'neptune',      type: 'service', x: 840, y: 560, label: 'Neptune Graph',           service: 'neptune' },
+  { id: 'student_info', type: 'service', x: 760, y: 680, label: 'Student Information',    service: 'dynamodb' },
+
+  // ── Outside Tools (right side) ─────────────────────────────────────────────
+  { id: 'career_res',   type: 'service', x: 1020, y: 300, label: 'career resources', service: 's3' },
+  { id: 'job_postings', type: 'service', x: 1020, y: 550, label: 'Job Postings',     service: 's3' },
+
+  // ── Job Search Batch Process ───────────────────────────────────────────────
+  { id: 'lambda_pq', type: 'service', x: 170, y: 870,  label: 'Lambda', sublabel: 'Process Queue',      service: 'lambda' },
+  { id: 'sqs',       type: 'service', x: 170, y: 970,  label: 'Amazon SQS',                              service: 'sqs' },
+  { id: 'lambda_q',  type: 'service', x: 55,  y: 970,  label: 'Lambda', sublabel: 'Add to Queue',       service: 'lambda' },
+  { id: 'eb1',       type: 'service', x: 55,  y: 1070, label: 'EventBridge', sublabel: 'trigger 1am everyday (Time Configurable)', service: 'eventbridge' },
+
+  // ── Communication Batch Process ────────────────────────────────────────────
+  { id: 'lambda_dn', type: 'service', x: 490, y: 870,  label: 'Lambda', sublabel: 'Send Daily Notifications', service: 'lambda' },
+  { id: 'ses',       type: 'service', x: 680, y: 850,  label: 'Simple Email Service',                    service: 'sns' },
+  { id: 'pinpoint',  type: 'service', x: 680, y: 950,  label: 'End User Messaging',                      service: 'sns' },
+  { id: 'eb2',       type: 'service', x: 490, y: 1070, label: 'EventBridge', sublabel: 'trigger 9am everyday (Time Configurable)', service: 'eventbridge' },
 ];
 
 const DEFAULT_EDGES: DrawIOEdge[] = [
-  { from: 'users', to: 'amplify' },
-  { from: 'amplify', to: 'lambda1', label: 'Save Resume' },
-  { from: 'amplify', to: 'lambda2', label: 'S3 Path' },
-  { from: 'amplify', to: 'lambda3', label: 'Save Profile' },
-  { from: 'amplify', to: 'apigw', label: 'Job Notification' },
-  { from: 'lambda1', to: 's3' },
-  { from: 'lambda2', to: 'bedrock1', label: 'Resume Parser' },
-  { from: 'amplify', to: 'lambda4' },
-  { from: 'lambda4', to: 'routing' },
-  { from: 'routing', to: 'career' },
-  { from: 'routing', to: 'jobsearch' },
-  { from: 'routing', to: 'memory' },
-  { from: 'career', to: 'bedrock_kb' },
-  { from: 'jobsearch', to: 'graphrag' },
-  { from: 'bedrock_kb', to: 's3_vector' },
-  { from: 'graphrag', to: 'neptune' },
-  { from: 'eb1', to: 'lambda_q' },
-  { from: 'lambda_q', to: 'sqs' },
-  { from: 'sqs', to: 'lambda_pq' },
-  { from: 'eb2', to: 'lambda_dn' },
+  // Live Search
+  { from: 'users',    to: 'amplify' },
+  { from: 'amplify',  to: 'lambda1',   label: 'Save Resume' },
+  { from: 'amplify',  to: 'lambda2',   label: 'S3 Path' },
+  { from: 'amplify',  to: 'lambda3',   label: 'Save Profile' },
+  { from: 'amplify',  to: 'apigw',     label: 'Job Notification Result' },
+  { from: 'lambda1',  to: 's3_resume' },
+  { from: 'lambda2',  to: 'bedrock1',  label: 'Resume Parser' },
+  { from: 'amplify',  to: 'lambda4' },
+  { from: 'lambda4',  to: 'routing' },
+
+  // Agentcore routing
+  { from: 'routing',  to: 'career' },
+  { from: 'routing',  to: 'jobsearch' },
+  { from: 'routing',  to: 'memory' },
+  { from: 'routing',  to: 'observability' },
+
+  // Tools connections
+  { from: 'career',      to: 'bedrock_kb' },
+  { from: 'jobsearch',   to: 'graphrag' },
+  { from: 'bedrock_kb',  to: 's3_vector' },
+  { from: 'graphrag',    to: 'neptune' },
+
+  // Right-side external nodes
+  { from: 'career',      to: 'career_res' },
+  { from: 'neptune',     to: 'job_postings' },
+
+  // Internet (dashed — external traffic into Tools)
+  { from: 'internet',    to: 'bedrock_kb', dashed: true },
+
+  // Student Information (shared store)
+  { from: 'jobsearch',   to: 'student_info' },
+  { from: 'lambda_pq',   to: 'student_info' },
+  { from: 'lambda_dn',   to: 'student_info' },
+
+  // Job Search Batch
+  { from: 'eb1',       to: 'lambda_q' },
+  { from: 'lambda_q',  to: 'sqs' },
+  { from: 'sqs',       to: 'lambda_pq' },
+
+  // Communication Batch
+  { from: 'eb2',       to: 'lambda_dn' },
   { from: 'lambda_dn', to: 'ses' },
   { from: 'lambda_dn', to: 'pinpoint' },
 ];
@@ -1036,7 +1096,7 @@ function ServiceNode({ node, iconSize, isSelected, onSelect, onHover, onLeave }:
       {/* Real AWS icon path scaled to fit iconSize */}
       <g transform={`translate(${node.x}, ${node.y}) scale(${scale})`}>
         <g transform={icon.glyphTransform}>
-          <path d={icon.path} fill="white" />
+          <path d={icon.path} fill={config.iconColor ?? 'white'} />
         </g>
       </g>
       {/* Primary label */}
