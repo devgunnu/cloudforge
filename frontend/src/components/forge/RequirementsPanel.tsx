@@ -27,6 +27,80 @@ function PulsingDot() {
   );
 }
 
+// ── Simple markdown → HTML renderer ──────────────────────────────────────────
+
+function renderMarkdown(raw: string): string {
+  // Step 1: escape HTML
+  let s = raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Step 2: fenced code blocks (protect from further processing)
+  const codeBlocks: string[] = [];
+  s = s.replace(/```(?:[a-zA-Z]*)\n?([\s\S]*?)```/g, (_m, code: string) => {
+    const idx = codeBlocks.length;
+    codeBlocks.push(
+      `<pre style="background:rgba(0,0,0,0.2);border:0.5px solid var(--lp-border);border-radius:8px;padding:12px 14px;overflow-x:auto;margin:10px 0"><code style="font-family:var(--font-jetbrains-mono),monospace;font-size:12px;color:var(--lp-text-primary);white-space:pre">${code}</code></pre>`
+    );
+    return `\x00CB${idx}\x00`;
+  });
+
+  // Step 3: inline code
+  s = s.replace(/`([^`\n]+)`/g, (_m, code: string) =>
+    `<code style="background:rgba(45,212,191,0.08);border:0.5px solid rgba(45,212,191,0.2);border-radius:4px;padding:1px 5px;font-family:var(--font-jetbrains-mono),monospace;font-size:12px;color:var(--lp-accent)">${code}</code>`
+  );
+
+  // Step 4: headers
+  s = s
+    .replace(/^#### (.+)$/gm, '<h4 style="font-family:var(--font-inter),system-ui,sans-serif;font-size:11px;font-weight:600;color:var(--lp-text-hint);margin:14px 0 4px;letter-spacing:0.06em;text-transform:uppercase">$1</h4>')
+    .replace(/^### (.+)$/gm, '<h3 style="font-family:var(--font-inter),system-ui,sans-serif;font-size:13px;font-weight:600;color:var(--lp-text-primary);margin:16px 0 6px">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 style="font-family:var(--font-inter),system-ui,sans-serif;font-size:15px;font-weight:600;color:var(--lp-text-primary);margin:20px 0 8px;padding-bottom:6px;border-bottom:0.5px solid var(--lp-border)">$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1 style="font-family:var(--font-inter),system-ui,sans-serif;font-size:18px;font-weight:700;color:var(--lp-text-primary);margin:0 0 16px;letter-spacing:-0.02em">$1</h1>');
+
+  // Step 5: bold + italic
+  s = s
+    .replace(/\*\*\*([^*\n]+)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong style="font-weight:600;color:var(--lp-text-primary)">$1</strong>')
+    .replace(/\*([^*\n]+)\*/g, '<em style="color:var(--lp-text-secondary)">$1</em>');
+
+  // Step 6: horizontal rules
+  s = s.replace(/^---$/gm, '<hr style="border:none;border-top:0.5px solid var(--lp-border);margin:16px 0"/>');
+
+  // Step 7: blockquotes (> is already &gt; after escaping)
+  s = s.replace(/^&gt; (.+)$/gm,
+    '<blockquote style="border-left:2px solid var(--lp-accent);padding:4px 12px;margin:8px 0;color:var(--lp-text-secondary);font-style:italic">$1</blockquote>'
+  );
+
+  // Step 8: list items
+  s = s.replace(/^[*-] (.+)$/gm,
+    '<li style="margin:3px 0;color:var(--lp-text-secondary);line-height:1.6;padding-left:4px">$1</li>'
+  );
+  s = s.replace(/^\d+\. (.+)$/gm,
+    '<li style="margin:3px 0;color:var(--lp-text-secondary);line-height:1.6;padding-left:4px">$1</li>'
+  );
+  // Wrap consecutive li elements
+  s = s.replace(/(<li[^>]*>[\s\S]*?<\/li>\n?)+/g,
+    m => `<ul style="margin:8px 0;padding-left:20px;list-style-type:disc">${m}</ul>`
+  );
+
+  // Step 9: paragraphs — split by double newlines
+  const blocks = s.split(/\n\n+/);
+  s = blocks.map(block => {
+    block = block.trim();
+    if (!block) return '';
+    if (/^<(h[1-6]|ul|ol|pre|hr|blockquote)/.test(block) || block.startsWith('\x00CB')) return block;
+    return `<p style="font-family:var(--font-inter),system-ui,sans-serif;font-size:13px;color:var(--lp-text-secondary);line-height:1.65;margin:0 0 12px">${block.replace(/\n/g, '<br/>')}</p>`;
+  }).join('\n');
+
+  // Step 10: restore code blocks
+  codeBlocks.forEach((block, idx) => {
+    s = s.replace(`\x00CB${idx}\x00`, block);
+  });
+
+  return s;
+}
+
 // ── Requirements panel ────────────────────────────────────────────────────────
 
 export default function RequirementsPanel() {
@@ -46,6 +120,12 @@ export default function RequirementsPanel() {
 
   const [textareaFocused, setTextareaFocused] = useState(false);
   const [genButtonPulsed, setGenButtonPulsed] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+
+  // Refs for scroll-position sync between edit and preview
+  const editRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
+  const scrollRatioRef = useRef(0);
 
   const reqStatus = stageStatus.requirements;
   const isDone = reqStatus === 'done';
@@ -63,8 +143,33 @@ export default function RequirementsPanel() {
     prevDoneRef.current = isDone;
   }, [isDone]);
 
+  function captureScrollRatio(el: HTMLElement | null) {
+    if (!el) return;
+    const max = el.scrollHeight - el.clientHeight;
+    scrollRatioRef.current = max > 0 ? el.scrollTop / max : 0;
+  }
+
+  function applyScrollRatio(el: HTMLElement | null) {
+    if (!el) return;
+    const max = el.scrollHeight - el.clientHeight;
+    el.scrollTop = max * scrollRatioRef.current;
+  }
+
+  function togglePreview() {
+    if (!previewMode) {
+      // Going to preview — capture edit scroll position
+      captureScrollRatio(editRef.current);
+      setPreviewMode(true);
+      setTimeout(() => applyScrollRatio(previewRef.current), 30);
+    } else {
+      // Going to edit — capture preview scroll position
+      captureScrollRatio(previewRef.current);
+      setPreviewMode(false);
+      setTimeout(() => applyScrollRatio(editRef.current), 30);
+    }
+  }
+
   function handleSubmitPrd() {
-    // Re-analyze: reset constraints and stage so the user can re-send via chat.
     if (!prdText.trim() || !currentProjectId) return;
     setConstraints([]);
     setStageStatus('requirements', 'locked');
@@ -139,33 +244,119 @@ export default function RequirementsPanel() {
         </AnimatePresence>
       </div>
 
-      {/* ── PRD textarea ─────────────────────────────────────────────────────── */}
-      <textarea
-        value={prdText}
-        onChange={(e) => setPrdText(e.target.value)}
-        onFocus={() => setTextareaFocused(true)}
-        onBlur={() => setTextareaFocused(false)}
-        aria-label="Product requirements document"
+      {/* ── PRD box: textarea (edit) or markdown (preview) ───────────────────── */}
+      <div
         style={{
           flex: 1,
+          position: 'relative',
           minHeight: '200px',
-          background: 'var(--lp-elevated)',
-          border: `0.5px solid ${
-            textareaFocused
-              ? 'rgba(45,212,191,0.4)'
-              : 'var(--lp-border-hover)'
-          }`,
-          borderRadius: '10px',
-          padding: '16px',
-          fontSize: '14px',
-          fontFamily: 'var(--font-jetbrains-mono), monospace',
-          color: 'var(--lp-text-primary)',
-          resize: 'vertical',
-          outline: 'none',
-          lineHeight: 1.65,
-          transition: 'border-color 150ms ease',
         }}
-      />
+      >
+        {/* Edit/Preview toggle button — top-right of the box */}
+        <button
+          type="button"
+          onClick={togglePreview}
+          style={{
+            position: 'absolute',
+            top: '8px',
+            right: '8px',
+            zIndex: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '4px 10px',
+            background: previewMode ? 'var(--lp-accent-dim)' : 'var(--lp-elevated)',
+            border: `0.5px solid ${previewMode ? 'rgba(45,212,191,0.3)' : 'var(--lp-border-hover)'}`,
+            borderRadius: '6px',
+            fontFamily: 'var(--font-inter), system-ui, sans-serif',
+            fontSize: '11px',
+            fontWeight: 500,
+            color: previewMode ? 'var(--lp-accent)' : 'var(--lp-text-secondary)',
+            cursor: 'pointer',
+            transition: 'all 150ms ease',
+          }}
+          aria-label={previewMode ? 'Switch to edit mode' : 'Switch to preview mode'}
+        >
+          {previewMode ? (
+            <>
+              {/* Pencil icon */}
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+                <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+              </svg>
+              Edit
+            </>
+          ) : (
+            <>
+              {/* Eye icon */}
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              Preview
+            </>
+          )}
+        </button>
+
+        {/* Edit mode: raw textarea */}
+        {!previewMode && (
+          <textarea
+            ref={editRef}
+            value={prdText}
+            onChange={(e) => setPrdText(e.target.value)}
+            onFocus={() => setTextareaFocused(true)}
+            onBlur={() => setTextareaFocused(false)}
+            onScroll={() => captureScrollRatio(editRef.current)}
+            aria-label="Product requirements document"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              background: 'var(--lp-elevated)',
+              border: `0.5px solid ${
+                textareaFocused
+                  ? 'rgba(45,212,191,0.4)'
+                  : 'var(--lp-border-hover)'
+              }`,
+              borderRadius: '10px',
+              padding: '16px',
+              paddingTop: '40px',
+              fontSize: '14px',
+              fontFamily: 'var(--font-jetbrains-mono), monospace',
+              color: 'var(--lp-text-primary)',
+              resize: 'none',
+              outline: 'none',
+              lineHeight: 1.65,
+              overflow: 'auto',
+              boxSizing: 'border-box',
+              transition: 'border-color 150ms ease',
+            }}
+          />
+        )}
+
+        {/* Preview mode: rendered markdown */}
+        {previewMode && (
+          <div
+            ref={previewRef}
+            onScroll={() => captureScrollRatio(previewRef.current)}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'var(--lp-elevated)',
+              border: '0.5px solid var(--lp-border-hover)',
+              borderRadius: '10px',
+              padding: '16px',
+              paddingTop: '44px',
+              overflowY: 'auto',
+              boxSizing: 'border-box',
+            }}
+            aria-label="Product requirements document preview"
+            // eslint-disable-next-line react/no-danger
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(prdText) }}
+          />
+        )}
+      </div>
 
       {/* ── Status hint ──────────────────────────────────────────────────────── */}
       <div
@@ -248,6 +439,10 @@ export default function RequirementsPanel() {
           Generate Architecture →
         </motion.button>
       </div>
+
+      <style>{`
+        textarea::placeholder { color: var(--lp-text-hint); }
+      `}</style>
     </main>
   );
 }
