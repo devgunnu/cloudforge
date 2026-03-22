@@ -1,0 +1,49 @@
+Generate {{ language }} application code for the following AWS service.
+
+## Service Details
+- ID: {{ service_id }}
+- Type: {{ service_type | upper }}
+- Label: {{ label }}
+{% if config %}
+- Configuration:
+{{ config | tojson(indent=2) }}
+{% endif %}
+
+{% if incoming or outgoing %}
+## Connections
+{% if incoming %}
+This service **receives** from:
+{% for conn in incoming %}
+  - `{{ conn.from }}` via {{ conn.via }}
+{% endfor %}
+{% endif %}
+{% if outgoing %}
+This service **calls / triggers**:
+{% for conn in outgoing %}
+  - `{{ conn.to }}` via {{ conn.via }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+{% if tf_context %}
+## Relevant Terraform Configuration
+The following Terraform resources are provisioned for this service — use the resource names/ARNs as environment variable references:
+```hcl
+{{ tf_context }}
+```
+{% endif %}
+
+## Task
+Generate the handler/entry point file: `services/{{ service_id }}/handler.{{ ext }}`
+
+{% if service_type == "lambda" %}
+The handler must export a function with signature: `def handler(event, context)` (Python) or `export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult>` (TypeScript).
+{% elif service_type == "ecs" or service_type == "ec2" %}
+Generate a long-running service entrypoint appropriate for a container or server process.
+{% elif service_type == "glue" %}
+Generate a PySpark/Glue ETL script with a main() function.
+{% elif service_type == "step_functions" %}
+Generate Lambda handler functions for each state in the state machine.
+{% endif %}
+
+Output ONLY the raw code content. No markdown. No explanation.
