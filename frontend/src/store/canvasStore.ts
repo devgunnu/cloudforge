@@ -45,6 +45,7 @@ interface CanvasStore {
   deployStatus: DeployStatus;
   deployLog: string[];
   deployError: string | null;
+  deployRunId: number;
   startDeploy: () => Promise<void>;
   resetDeploy: () => void;
 
@@ -129,6 +130,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   deployStatus: 'idle',
   deployLog: [],
   deployError: null,
+  deployRunId: 0,
 
   startDeploy: async () => {
     const { getTopology, deployStatus } = get();
@@ -136,7 +138,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
     const topology = getTopology();
 
-    set({ deployStatus: 'generating', deployLog: [], deployError: null });
+    const runId = get().deployRunId + 1;
+    set({ deployStatus: 'generating', deployLog: [], deployError: null, deployRunId: runId });
 
     try {
       for await (const event of runMockDeploy()) {
@@ -174,10 +177,10 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       return;
     }
 
-    // Auto-reset to idle after 4s on success
+    // Auto-reset to idle after 4s on success — guard against stale timers from prior deploys
     setTimeout(() => {
       set((state) => {
-        if (state.deployStatus === 'live') {
+        if (state.deployStatus === 'live' && state.deployRunId === runId) {
           return { deployStatus: 'idle' };
         }
         return {};
@@ -186,7 +189,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   resetDeploy: () =>
-    set({ deployStatus: 'idle', deployLog: [], deployError: null }),
+    set((state) => ({ deployStatus: 'idle', deployLog: [], deployError: null, deployRunId: state.deployRunId + 1 })),
 
   getTopology: () => {
     const { nodes, edges } = get();

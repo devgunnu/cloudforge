@@ -19,11 +19,18 @@ export default function ProjectShell({ children }: { children: React.ReactNode }
 
   const project = projects.find((p) => p.id === id);
 
-  // Direction tracking: computed synchronously via ref, no state needed
-  const prevIndexRef = useRef<number>(STAGE_ORDER.indexOf(currentRoute as ProjectStage));
+  // Direction tracking: ref mutation is deferred to useEffect, never during render
+  const prevIndexRef = useRef<number | null>(null);
   const currentIndex = STAGE_ORDER.indexOf(currentRoute as ProjectStage);
-  const direction = currentIndex !== -1 && currentIndex >= prevIndexRef.current ? 1 : -1;
-  if (currentIndex !== -1) prevIndexRef.current = currentIndex;
+  const previousIndex = prevIndexRef.current;
+  const direction =
+    currentIndex === -1 || previousIndex === null || currentIndex >= previousIndex ? 1 : -1;
+
+  useEffect(() => {
+    if (currentIndex !== -1) {
+      prevIndexRef.current = currentIndex;
+    }
+  }, [currentIndex]);
 
   // Guard: redirect if project missing or route is locked
   useEffect(() => {

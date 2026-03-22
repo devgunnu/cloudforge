@@ -103,6 +103,7 @@ export default function RequirementsPanel() {
         role: 'agent',
         content: 'Failed to extract constraints. Please try again.',
       });
+      setStageStatus('requirements', 'locked');
       agentRan.current = false;
     });
   }, [reqStatus, prdText, addChatMessage, setConstraints, setStageStatus]);

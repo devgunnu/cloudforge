@@ -8,6 +8,7 @@ import {
   MiniMap,
   BackgroundVariant,
   MarkerType,
+  useReactFlow,
   type Edge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -35,6 +36,7 @@ export default function CanvasPane() {
   const addNode = useCanvasStore((s) => s.addNode);
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode);
   const [dndType] = useDnD();
+  const { screenToFlowPosition } = useReactFlow();
 
   const onDragOver = useCallback((event: React.DragEvent) => {
     event.preventDefault();
@@ -48,16 +50,10 @@ export default function CanvasPane() {
       const service = awsServices[dndType];
       if (!service) return;
 
-      // Get the ReactFlow wrapper element to calculate position
-      const reactFlowWrapper = event.currentTarget as HTMLElement;
-      const rect = reactFlowWrapper.getBoundingClientRect();
-
-      // We approximate position since we can't call useReactFlow here
-      // CanvasPane is inside ReactFlowProvider so we use the DOM rect
-      const position = {
-        x: event.clientX - rect.left - 100,
-        y: event.clientY - rect.top - 40,
-      };
+      const position = screenToFlowPosition({
+        x: event.clientX,
+        y: event.clientY,
+      });
 
       addNode({
         id: `node_${Date.now()}`,
@@ -70,7 +66,7 @@ export default function CanvasPane() {
         },
       });
     },
-    [dndType, addNode]
+    [dndType, addNode, screenToFlowPosition]
   );
 
   const styledEdges = edges.map((edge: Edge) => {
