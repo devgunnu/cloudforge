@@ -25,6 +25,32 @@ class Settings(BaseSettings):
     agent3_model: str = "qwen3.5"        # primary model for heavy tasks
     agent3_fast_model: str = "qwen3.5"   # lighter tasks (code fixing, test gen)
 
+    # MongoDB
+    mongodb_url: str = "mongodb://localhost:27017"
+    mongodb_db_name: str = "cloudforge"
+
+    # JWT
+    jwt_secret_key: str = "changeme"
+    jwt_algorithm: str = "HS256"
+    jwt_access_expire_minutes: int = 30
+    jwt_refresh_expire_days: int = 7
+
+    # Encryption
+    fernet_key: str = ""
+
+    # GitHub OAuth
+    github_client_id: str = ""
+    github_client_secret: str = ""
+    github_redirect_uri: str = "http://localhost:8000/auth/github/callback"
+
+    # External services
+    anthropic_api_key: str = ""
+    frontend_url: str = "http://localhost:3000"
+
+    # Agent data paths
+    graph_json_path: str = "app/agents/data/graph/graph.json"
+    kuzu_db_path: str = "./cloudforge_db"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
