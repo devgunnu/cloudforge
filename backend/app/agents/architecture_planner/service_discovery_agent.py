@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 from langchain_core.messages import HumanMessage
@@ -21,7 +22,7 @@ class ServiceDiscoveryOutput(BaseModel):
 
 def make_service_discovery_node(llm, terraform_adapter=None):
     """
-    Factory returning an async service_discovery_node bound to the provided LLM.
+    Factory returning a service_discovery_node bound to the provided LLM.
 
     Args:
         llm:               Any LangChain chat model.
@@ -33,15 +34,15 @@ def make_service_discovery_node(llm, terraform_adapter=None):
                            behaviour identical to the original implementation.
     """
 
-    async def service_discovery_node(state: ArchitecturePlannerState) -> dict:
+    def service_discovery_node(state: ArchitecturePlannerState) -> dict:
         # ------------------------------------------------------------------
         # Step 1: Fetch Terraform context via MCP (async, cached, never raises)
         # ------------------------------------------------------------------
         terraform_context: str | None = None
         if terraform_adapter is not None:
-            terraform_context = await terraform_adapter.format_for_prompt(
+            terraform_context = asyncio.run(terraform_adapter.format_for_prompt(
                 cloud_provider=state["cloud_provider"],
-            )
+            ))
 
         # ------------------------------------------------------------------
         # Step 2: Render prompt — terraform_context may be None (Jinja handles it)
