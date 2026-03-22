@@ -4,8 +4,6 @@ import { useEffect, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForgeStore } from '@/store/forgeStore';
 import { runDeploy } from '@/lib/forge-agents';
-import { isDemoActive, useDemoStore } from '@/lib/demo/demoStore';
-import { runDemoDeploy } from '@/lib/demo/demoService';
 import type { ForgeArchNode, ForgeArchEdge } from '@/store/forgeStore';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -385,23 +383,10 @@ export default function DeployPanel() {
   const nodes: ForgeArchNode[] = architectureData?.nodes ?? [];
   const edges: ForgeArchEdge[] = architectureData?.edges ?? [];
 
-  // Persist demo mode flag so isDemoActive() survives navigation without ?demo=true
-  useEffect(() => {
-    if (isDemoActive()) useDemoStore.getState().setDemoMode(true);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Run deploy agent on mount if status is 'processing' or 'locked' in demo mode
+  // Run deploy agent on mount if status is 'processing'
   useEffect(() => {
     if (agentRan.current) return;
-    // Allow 'locked' in demo mode so direct navigation to /deploy?demo=true works
-    const isLocked = deployStatus === 'locked';
-    if (deployStatus !== 'processing' && !(isLocked && isDemoActive())) return;
-
-    // If locked in demo mode, transition to processing first
-    if (isLocked && isDemoActive()) {
-      setStageStatus('deploy', 'processing');
-      return; // the state update will re-trigger this effect
-    }
+    if (deployStatus !== 'processing') return;
 
     agentRan.current = true;
 
@@ -411,23 +396,6 @@ export default function DeployPanel() {
       content:
         'Initiating AWS provisioning sequence. Monitoring resource creation in real-time\u2026',
     });
-
-    if (isDemoActive()) {
-      runDemoDeploy(
-        (message) => addChatMessage('deploy', message),
-        (logLine: string) => addDeployLog(logLine),
-      ).then(() => {
-        setStageStatus('deploy', 'done');
-        addChatMessage('deploy', {
-          id: `deploy-done-${Date.now()}`,
-          role: 'agent',
-          content: 'Deployment complete. All 5 resources are live. est. $32.70/month.',
-        });
-      }).catch(() => {
-        agentRan.current = false;
-      });
-      return;
-    }
 
     const files = Object.values(generatedFiles);
     const archData = architectureData ?? { nodes: [], edges: [] };
@@ -462,11 +430,9 @@ export default function DeployPanel() {
     addChatMessage,
   ]);
 
-  // Dev-mode: if deploy status is 'locked' (direct nav), run the animation anyway.
-  // Skip entirely in demo mode — the primary effect handles the demo flow.
+  // Dev-mode: if deploy status is 'locked' (direct nav), run the animation anyway
   useEffect(() => {
     if (deployStatus !== 'locked') return;
-    if (isDemoActive()) return;
 
     const nodeIds = nodes.map((n) => n.id);
 

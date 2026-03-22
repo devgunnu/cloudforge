@@ -5,7 +5,6 @@ import { useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, X } from 'lucide-react';
 import { useForgeStore } from '@/store/forgeStore';
-import { isDemoActive } from '@/lib/demo/demoStore';
 
 export default function ForgeDeployModal() {
   const { deployModalOpen, setDeployModalOpen, projectName, advanceStage, setStageStatus } =
@@ -18,8 +17,7 @@ export default function ForgeDeployModal() {
     setDeployModalOpen(false);
     setStageStatus('deploy', 'processing');
     advanceStage();
-    const demoParam = isDemoActive() ? '?demo=true' : '';
-    router.push(`/app/${id}/deploy${demoParam}`);
+    router.push(`/app/${id}/deploy`);
   }
 
   function handleCancel() {

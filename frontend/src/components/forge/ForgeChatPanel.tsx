@@ -15,14 +15,6 @@ import {
 import { useProjectStore } from '@/store/projectStore';
 import { useAuthStore } from '@/store/authStore';
 import { streamSSE, authHeaders } from '@/lib/forge-agents';
-import { SuggestedCommands, type SuggestedCommand } from './SuggestedCommands';
-import { isDemoActive, useDemoStore } from '@/lib/demo/demoStore';
-import {
-  runDemoRequirements,
-  runDemoArchitecture,
-  runDemoBuild,
-  runDemoDeploy,
-} from '@/lib/demo/demoService';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -813,11 +805,7 @@ function InputBar({
     setCurrentProjectId,
     currentProjectId,
     stageStatus,
-    setArchitectureData,
-    addGeneratedFile,
-    addDeployLog,
   } = useForgeStore();
-  const { setStreaming } = useDemoStore();
   const { createApiProject } = useProjectStore();
   const { accessToken } = useAuthStore();
   const [value, setValue] = useState('');
@@ -989,85 +977,12 @@ function InputBar({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage, streamPrd, addChatMessage, setStageStatus, onRegisterClarificationHandler]);
 
-  const handleCommandSelect = useCallback((command: SuggestedCommand) => {
-    setValue(command.payload);
-    // Trigger send after state update via a micro-task so setValue has flushed
-    setTimeout(() => {
-      void (async () => {
-        const trimmed = command.payload.trim();
-        if (!trimmed) return;
-        addChatMessage(stage, { id: `user-${Date.now()}`, role: 'user', content: trimmed });
-        setValue('');
-        if (isDemoActive()) {
-          await runDemoIntercept(stage, trimmed);
-          return;
-        }
-      })();
-    }, 0);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, addChatMessage]);
-
-  async function runDemoIntercept(currentStage: typeof stage, userInput: string): Promise<void> {
-    setStreaming(true);
-    setStageStatus(currentStage, 'processing');
-    try {
-      switch (currentStage) {
-        case 'requirements':
-          await runDemoRequirements(userInput, (msg) =>
-            addChatMessage('requirements', msg),
-          );
-          setStageStatus('requirements', 'done');
-          break;
-        case 'architecture':
-          await runDemoArchitecture(
-            (msg) => addChatMessage('architecture', msg),
-            (nodes) => setArchitectureData({ nodes, edges: [] }),
-          );
-          setStageStatus('architecture', 'done');
-          break;
-        case 'build':
-          await runDemoBuild(
-            (msg) => addChatMessage('build', msg),
-            (files) => {
-              for (const f of files) {
-                addGeneratedFile({
-                  id: f.id,
-                  name: f.name,
-                  path: f.path,
-                  lang: f.lang,
-                  status: f.status,
-                  lines: f.content.split('\n').map((line) => ({ content: line })),
-                });
-              }
-            },
-          );
-          setStageStatus('build', 'done');
-          break;
-        case 'deploy':
-          await runDemoDeploy(
-            (msg) => addChatMessage('deploy', msg),
-            (line) => addDeployLog(line),
-          );
-          setStageStatus('deploy', 'done');
-          break;
-      }
-    } finally {
-      setStreaming(false);
-    }
-  }
-
   async function handleSend() {
     const trimmed = value.trim();
     if (!trimmed || sending) return;
 
     addChatMessage(stage, { id: `user-${Date.now()}`, role: 'user', content: trimmed });
     setValue('');
-
-    // Demo mode: intercept and simulate agent response
-    if (isDemoActive()) {
-      await runDemoIntercept(stage, trimmed);
-      return;
-    }
 
     // Only requirements and architecture stages hit the backend
     if (stage !== 'requirements' && stage !== 'architecture') return;
@@ -1142,26 +1057,13 @@ function InputBar({
   return (
     <div
       style={{
+        padding: '10px 10px',
         borderTop: '0.5px solid var(--lp-border)',
         display: 'flex',
         flexDirection: 'column',
+        gap: '6px',
       }}
     >
-      {/* Suggested command chips */}
-      <SuggestedCommands
-        stage={stage}
-        onSelect={handleCommandSelect}
-        disabled={isProcessing}
-      />
-
-      <div
-        style={{
-          padding: '0 10px 10px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '6px',
-        }}
-      >
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -1358,7 +1260,6 @@ function InputBar({
           <Send size={12} aria-hidden="true" />
           Send
         </button>
-      </div>
       </div>
     </div>
   );

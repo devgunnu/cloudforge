@@ -4,9 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForgeStore } from '@/store/forgeStore';
-import { isDemoActive, useDemoStore } from '@/lib/demo/demoStore';
-import { runDemoRequirements } from '@/lib/demo/demoService';
-import type { ForgeChatMessage, ConstraintChip } from '@/store/forgeStore';
 
 // ── Pulsing dot for processing state ─────────────────────────────────────────
 
@@ -118,7 +115,6 @@ export default function RequirementsPanel() {
     stageStatus,
     setStageStatus,
     advanceStage,
-    addChatMessage,
     currentProjectId,
   } = useForgeStore();
 
@@ -134,21 +130,6 @@ export default function RequirementsPanel() {
   const reqStatus = stageStatus.requirements;
   const isDone = reqStatus === 'done';
   const isProcessing = reqStatus === 'processing';
-
-  // Persist demo mode flag in the Zustand store so isDemoActive() stays true
-  // after client-side navigation that drops ?demo=true from the URL.
-  useEffect(() => {
-    if (isDemoActive()) useDemoStore.getState().setDemoMode(true);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Pre-populate PRD text in demo mode so the textarea is never blank
-  useEffect(() => {
-    if (!isDemoActive()) return;
-    if (prdText) return; // already has content — don't overwrite
-    setPrdText(
-      'Build a scalable e-commerce platform with user authentication, product catalog, shopping cart, Stripe payment processing, and an admin dashboard. Expected traffic: 10k daily users.',
-    );
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Trigger a single pulse animation when status transitions to done
   const prevDoneRef = useRef(isDone);
@@ -189,47 +170,13 @@ export default function RequirementsPanel() {
   }
 
   function handleSubmitPrd() {
-    if (!prdText.trim()) return;
-
-    if (isDemoActive()) {
-      setConstraints([]);
-      setStageStatus('requirements', 'processing');
-
-      runDemoRequirements(prdText, (message: ForgeChatMessage) => {
-        addChatMessage('requirements', message);
-        // Extract constraint chips from agent messages that carry them
-        if (message.chips && message.chips.length > 0) {
-          const chips: ConstraintChip[] = message.chips.map((c) => ({
-            id: c.id,
-            label: c.label,
-            category: c.category,
-          }));
-          setConstraints(chips);
-        }
-      }).then(() => {
-        setStageStatus('requirements', 'done');
-      }).catch(() => {
-        // Demo streaming failed — still complete the stage gracefully
-        setStageStatus('requirements', 'done');
-      });
-      return;
-    }
-
-    if (!currentProjectId) return;
+    if (!prdText.trim() || !currentProjectId) return;
     setConstraints([]);
     setStageStatus('requirements', 'locked');
   }
 
   async function handleGenerateArchitecture() {
-    if (!isDone) return;
-
-    if (isDemoActive()) {
-      advanceStage();
-      router.push(`/app/${id}/architecture?demo=true`);
-      return;
-    }
-
-    if (!currentProjectId) return;
+    if (!isDone || !currentProjectId) return;
     // Accept the PRD so architecture_sse gate passes
     try {
       const { authHeaders } = await import('@/lib/forge-agents');
