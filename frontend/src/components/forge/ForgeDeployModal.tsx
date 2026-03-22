@@ -7,8 +7,16 @@ import { AlertTriangle, X } from 'lucide-react';
 import { useForgeStore } from '@/store/forgeStore';
 
 export default function ForgeDeployModal() {
-  const { deployModalOpen, setDeployModalOpen, projectName, advanceStage, setStageStatus } =
+  const { deployModalOpen, setDeployModalOpen, projectName, advanceStage, setStageStatus, architectureData } =
     useForgeStore();
+
+  // Compute dynamic summary from architecture data
+  const resourceCount = architectureData?.nodes?.length ?? 5;
+  const estimatedCost = architectureData?.nodes?.reduce((sum, n) => {
+    const cost = parseFloat(n.estimatedCost?.replace(/[^0-9.]/g, '') || '0');
+    return sum + cost;
+  }, 0) ?? 32.70;
+  const region = 'us-east-1';
   const router = useRouter();
 
   function handleDeploy() {
@@ -201,10 +209,10 @@ export default function ForgeDeployModal() {
             >
               {[
                 { label: 'Project', value: projectName },
-                { label: 'Services', value: '5 AWS resources' },
-                { label: 'Estimated cost', value: '~$32.70 / month' },
-                { label: 'IAM roles', value: '2 roles' },
-                { label: 'Region', value: 'us-east-1' },
+                { label: 'Services', value: `${resourceCount} AWS resources` },
+                { label: 'Estimated cost', value: `~$${estimatedCost.toFixed(2)} / month` },
+                { label: 'IAM roles', value: `${Math.max(1, Math.floor(resourceCount / 2))} roles` },
+                { label: 'Region', value: region },
                 { label: 'Terraform state', value: 'S3 backend' },
               ].map(({ label, value }, i, arr) => (
                 <div

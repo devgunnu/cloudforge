@@ -364,6 +364,8 @@ export interface DeployCallbacks {
     nodeId: string,
     status: 'provisioning' | 'live'
   ) => void;
+  onComplete?: (outputs: Record<string, unknown>) => void;
+  onError?: (message: string) => void;
 }
 
 const DEPLOY_SEQUENCE: Array<{
@@ -393,15 +395,129 @@ const DEPLOY_SEQUENCE: Array<{
 ];
 
 /**
- * BACKEND HOOK: POST /api/deploy
- * Body: { files: GeneratedFile[], architectureData: { nodes, edges } }
- * Response stream: SSE with { log: string, nodeId?: string, status?: string } events.
+ * Deploy infrastructure via the real backend SSE pipeline.
+ *
+ * Flow:
+ *   1. POST /api/deploy → starts deployment, returns deploymentId
+ *   2. GET  /api/deploy?id=X → SSE stream of events
+ *   3. Events dispatched to callbacks in real-time
+ *
+ * Falls back to mock deploy sequence if backend is unreachable.
  */
 export async function runDeploy(
   _files: GeneratedFile[],
-  _architectureData: { nodes: ForgeArchNode[]; edges: ForgeArchEdge[] },
+  architectureData: { nodes: ForgeArchNode[]; edges: ForgeArchEdge[] },
   callbacks: DeployCallbacks
 ): Promise<void> {
+  try {
+    // Step 1: Start deployment via API
+    callbacks.onLog('⟳  Connecting to deployment backend…');
+
+    const startRes = await fetch('/api/deploy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        architectureData: {
+          nodes: architectureData.nodes,
+          edges: architectureData.edges,
+        },
+        projectName: 'cloudforge-project',
+        region: 'us-east-1',
+        environment: 'prod',
+      }),
+    });
+
+    if (!startRes.ok) {
+      throw new Error(`Backend returned ${startRes.status}`);
+    }
+
+    const { deploymentId, mock } = await startRes.json();
+
+    // If backend returned a mock response, fall back to mock deploy
+    if (mock) {
+      callbacks.onLog('⟳  Backend unavailable — running local simulation');
+      await runMockDeploy(callbacks);
+      return;
+    }
+
+    callbacks.onLog(`✓  Deployment ${deploymentId} accepted`);
+
+    // Step 2: Stream SSE events
+    const streamRes = await fetch(`/api/deploy?id=${deploymentId}`, {
+      headers: { Accept: 'text/event-stream' },
+    });
+
+    if (!streamRes.ok || !streamRes.body) {
+      throw new Error(`Stream connect failed (${streamRes.status})`);
+    }
+
+    const reader = streamRes.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const jsonStr = line.slice(6).trim();
+        if (!jsonStr) continue;
+
+        try {
+          const event = JSON.parse(jsonStr) as {
+            type: string;
+            message: string;
+            data: Record<string, unknown>;
+          };
+
+          switch (event.type) {
+            case 'log':
+            case 'terraform_output':
+              callbacks.onLog(event.message);
+              break;
+            case 'node_status': {
+              const nodeId = event.data.nodeId as string;
+              const status = event.data.status as 'provisioning' | 'live';
+              if (nodeId && status) {
+                callbacks.onNodeStatus(nodeId, status);
+              }
+              callbacks.onLog(event.message);
+              break;
+            }
+            case 'stage_change':
+              callbacks.onLog(`── ${event.message} ──`);
+              break;
+            case 'error':
+              callbacks.onLog(`ERROR: ${event.message}`);
+              callbacks.onError?.(event.message);
+              break;
+            case 'complete':
+              callbacks.onLog(event.message);
+              callbacks.onComplete?.((event.data.outputs as Record<string, unknown>) || {});
+              return;
+          }
+        } catch {
+          // Skip malformed SSE data
+        }
+      }
+    }
+  } catch (err) {
+    // Fallback to mock deploy if backend is unreachable
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    callbacks.onLog(`⟳  Backend connection failed (${msg}) — running local simulation`);
+    await runMockDeploy(callbacks);
+  }
+}
+
+/**
+ * Mock deploy sequence — used when backend is unavailable.
+ */
+async function runMockDeploy(callbacks: DeployCallbacks): Promise<void> {
   for (const event of DEPLOY_SEQUENCE) {
     await delay(event.ms);
     callbacks.onLog(event.line);

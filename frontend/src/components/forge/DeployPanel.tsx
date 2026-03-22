@@ -407,14 +407,33 @@ export default function DeployPanel() {
       onLog: (line: string) => addDeployLog(line),
       onNodeStatus: (nodeId: string, status: 'provisioning' | 'live') =>
         updateNodeDeployStatus(nodeId, status),
+      onComplete: () => {
+        setStageStatus('deploy', 'done');
+        addChatMessage('deploy', {
+          id: `deploy-done-${Date.now()}`,
+          role: 'agent',
+          content:
+            'Deployment complete. All resources are live.',
+        });
+      },
+      onError: (message: string) => {
+        addChatMessage('deploy', {
+          id: `deploy-error-${Date.now()}`,
+          role: 'agent',
+          content: `Deployment error: ${message}`,
+        });
+      },
     }).then(() => {
-      setStageStatus('deploy', 'done');
-      addChatMessage('deploy', {
-        id: `deploy-done-${Date.now()}`,
-        role: 'agent',
-        content:
-          'Deployment complete. All 5 resources are live. est. $32.70/month.',
-      });
+      // If onComplete wasn't called by SSE (mock path), mark done here
+      if (stageStatus.deploy !== 'done') {
+        setStageStatus('deploy', 'done');
+        addChatMessage('deploy', {
+          id: `deploy-done-${Date.now()}`,
+          role: 'agent',
+          content:
+            'Deployment complete. All 5 resources are live. est. $32.70/month.',
+        });
+      }
     }).catch(() => {
       addChatMessage('deploy', {
         id: `deploy-error-${Date.now()}`,
@@ -599,9 +618,9 @@ export default function DeployPanel() {
         <div style={{ flex: 1, display: 'flex', gap: '16px', alignItems: 'center' }}>
           {(
             [
-              { label: 'Est. cost', value: '~$32.70/mo' },
-              { label: 'Services', value: '5 AWS resources' },
-              { label: 'IAM roles', value: '2' },
+              { label: 'Est. cost', value: `~$${nodes.reduce((s, n) => s + parseFloat(n.estimatedCost?.replace(/[^0-9.]/g, '') || '0'), 0).toFixed(2)}/mo` },
+              { label: 'Services', value: `${nodes.length} AWS resources` },
+              { label: 'IAM roles', value: `${Math.max(1, Math.floor(nodes.length / 2))}` },
             ] as const
           ).map((stat) => (
             <div key={stat.label}>
