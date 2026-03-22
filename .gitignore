@@ -12,7 +12,7 @@ var/
 sdist/
 develop-eggs/
 .installed.cfg
-lib/
+backend/lib/
 lib64/
 wheels/
 .pytest_cache/
