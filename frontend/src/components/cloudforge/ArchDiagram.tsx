@@ -1133,15 +1133,15 @@ function ServiceNode({ node, iconSize, isSelected, onSelect, onHover, onLeave }:
 
 function DiagramEdge({
   edge,
-  nodes,
+  nodeMap,
   iconSize,
 }: {
   edge: DrawIOEdge;
-  nodes: DrawIONode[];
+  nodeMap: Map<string, DrawIONode>;
   iconSize: number;
 }) {
-  const fromNode = nodes.find((n) => n.id === edge.from);
-  const toNode = nodes.find((n) => n.id === edge.to);
+  const fromNode = nodeMap.get(edge.from);
+  const toNode = nodeMap.get(edge.to);
   if (!fromNode || !toNode) return null;
 
   const getCenter = (n: DrawIONode): [number, number] => {
@@ -1355,7 +1355,7 @@ export default function ArchDiagram({
             <DiagramEdge
               key={`${edge.from}-${edge.to}-${i}`}
               edge={edge}
-              nodes={nodes}
+              nodeMap={nodeMap}
               iconSize={ICON_SIZE}
             />
           ))}
