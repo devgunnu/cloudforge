@@ -1346,6 +1346,7 @@ export default function ArchDiagram({
         borderRadius: '12px',
         position: 'relative',
       }}
+      role="img"
       aria-label={ariaLabel}
     >
       {/* SVG diagram — shrinks when panel is open */}
