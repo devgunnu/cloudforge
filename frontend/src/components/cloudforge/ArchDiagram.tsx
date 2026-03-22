@@ -548,16 +548,51 @@ const DEFAULT_EDGES: DrawIOEdge[] = [
 
 /* ── Backward Compatibility Converters ──────────────────────────────────────── */
 
-function mapForgeTypeToService(type: ForgeArchNode['type']): AWSServiceId {
-  const map: Record<ForgeArchNode['type'], AWSServiceId> = {
+/** Maps a ForgeArchNode to an AWSServiceId, using terraformResource for precision. */
+function mapForgeNodeToService(node: ForgeArchNode): AWSServiceId {
+  // Exact terraform resource type takes priority over the coarse `type` field
+  const tfMap: Partial<Record<string, AWSServiceId>> = {
+    aws_lambda_function: 'lambda',
+    aws_apigatewayv2_api: 'apigateway',
+    aws_api_gateway_rest_api: 'apigateway',
+    aws_elasticache_cluster: 'generic',   // ElastiCache not in AWSServiceId — use generic
+    aws_elasticache_replication_group: 'generic',
+    aws_db_instance: 'rds',
+    aws_rds_cluster: 'rds',
+    aws_s3_bucket: 's3',
+    aws_sqs_queue: 'sqs',
+    aws_sns_topic: 'sns',
+    aws_cloudfront_distribution: 'cloudfront',
+    aws_cognito_user_pool: 'cognito',
+    aws_secretsmanager_secret: 'generic',
+    aws_dynamodb_table: 'dynamodb',
+    aws_ecs_service: 'ecs',
+    aws_ecs_cluster: 'ecs',
+    aws_eks_cluster: 'eks',
+    aws_kinesis_stream: 'kinesis',
+    aws_cloudwatch_event_rule: 'eventbridge',
+    aws_sfn_state_machine: 'stepfunctions',
+    aws_route53_record: 'route53',
+    aws_lb: 'elb',
+    aws_alb: 'elb',
+    aws_instance: 'ec2',
+    aws_bedrock_model_invocation_logging_configuration: 'bedrock',
+  };
+
+  if (node.terraformResource && tfMap[node.terraformResource] !== undefined) {
+    return tfMap[node.terraformResource]!;
+  }
+
+  // Fall back to coarse type mapping
+  const typeMap: Record<ForgeArchNode['type'], AWSServiceId> = {
     compute: 'lambda',
     storage: 's3',
-    cache: 'dynamodb',
+    cache: 'generic',
     gateway: 'apigateway',
     queue: 'sqs',
-    auth: 'cognito',
+    auth: 'generic',
   };
-  return map[type] ?? 'generic';
+  return typeMap[node.type] ?? 'generic';
 }
 
 export function convertForgeNodes(forgeNodes: ForgeArchNode[]): DrawIONode[] {
@@ -568,7 +603,7 @@ export function convertForgeNodes(forgeNodes: ForgeArchNode[]): DrawIONode[] {
     y: n.y ?? Math.floor(i / 4) * 160 + 40,
     label: n.label,
     sublabel: n.sublabel,
-    service: mapForgeTypeToService(n.type),
+    service: mapForgeNodeToService(n),
   }));
 }
 
