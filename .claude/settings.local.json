@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3:*)",
+      "Bash(ls -la \"/c/Users/gunbi/OneDrive/Desktop/cloudforge/frontend/src/app/\\(auth\\)/\")",
+      "Bash(find /c/Users/gunbi/OneDrive/Desktop/cloudforge/backend -name .env* -o -name *.env)",
+      "Bash(cat:*)",
+      "Bash(npx tsc:*)",
+      "Bash(xargs grep:*)"
+    ]
+  }
+}

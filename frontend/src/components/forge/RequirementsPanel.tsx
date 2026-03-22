@@ -4,8 +4,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForgeStore } from '@/store/forgeStore';
-import { runAgent1 } from '@/lib/forge-agents';
-import type { ConstraintChip } from '@/store/forgeStore';
 
 // ── Pulsing dot for processing state ─────────────────────────────────────────
 
@@ -40,11 +38,10 @@ export default function RequirementsPanel() {
     setConstraints,
     stageStatus,
     setStageStatus,
-    addChatMessage,
     advanceStage,
+    currentProjectId,
   } = useForgeStore();
 
-  const agentRan = useRef(false);
   const [textareaFocused, setTextareaFocused] = useState(false);
   const [genButtonPulsed, setGenButtonPulsed] = useState(false);
 
@@ -64,59 +61,11 @@ export default function RequirementsPanel() {
     prevDoneRef.current = isDone;
   }, [isDone]);
 
-  // Run agent 1 on mount if processing or locked (dev direct-nav) — Strict Mode safe via ref guard
-  useEffect(() => {
-    if (agentRan.current) return;
-    if (reqStatus !== 'processing' && reqStatus !== 'locked') return;
-
-    agentRan.current = true;
-
-    addChatMessage('requirements', {
-      id: `agent1-start-${Date.now()}`,
-      role: 'agent',
-      content:
-        "I'm analyzing your PRD to extract non-functional requirements and constraints…",
-    });
-
-    const collectedChips: ConstraintChip[] = [];
-
-    runAgent1(prdText, (chip: ConstraintChip) => {
-      collectedChips.push(chip);
-      addChatMessage('requirements', {
-        id: `agent1-chip-${chip.id}-${Date.now()}`,
-        role: 'agent',
-        content: '',
-        chips: [chip],
-      });
-    }).then((chips) => {
-      setConstraints(chips);
-      setStageStatus('requirements', 'done');
-      addChatMessage('requirements', {
-        id: `agent1-done-${Date.now()}`,
-        role: 'agent',
-        content: `Extracted ${chips.length} constraints. Ready to generate the architecture.`,
-        chips,
-      });
-    }).catch(() => {
-      addChatMessage('requirements', {
-        id: `agent1-error-${Date.now()}`,
-        role: 'agent',
-        content: 'Failed to extract constraints. Please try again.',
-      });
-      setStageStatus('requirements', 'locked');
-      agentRan.current = false;
-    });
-  }, [reqStatus, prdText, addChatMessage, setConstraints, setStageStatus]);
-
-  function handleEdit() {
-    setStageStatus('requirements', 'processing');
+  function handleSubmitPrd() {
+    // Re-analyze: reset constraints and stage so the user can re-send via chat.
+    if (!prdText.trim() || !currentProjectId) return;
     setConstraints([]);
-    agentRan.current = false;
-    addChatMessage('requirements', {
-      id: `system-reset-${Date.now()}`,
-      role: 'agent',
-      content: 'PRD updated. Re-analyzing requirements…',
-    });
+    setStageStatus('requirements', 'locked');
   }
 
   function handleGenerateArchitecture() {
@@ -265,27 +214,6 @@ export default function RequirementsPanel() {
           flexShrink: 0,
         }}
       >
-        {/* Edit ghost button */}
-        <button
-          type="button"
-          onClick={handleEdit}
-          style={{
-            padding: '7px 14px',
-            background: 'transparent',
-            border: '0.5px solid var(--lp-border-hover)',
-            borderRadius: '8px',
-            fontFamily: 'var(--font-inter), system-ui, sans-serif',
-            fontSize: '13px',
-            fontWeight: 500,
-            color: 'var(--lp-text-secondary)',
-            cursor: 'pointer',
-            transition: 'border-color 120ms ease, color 120ms ease',
-          }}
-          aria-label="Re-run requirements extraction"
-        >
-          Edit
-        </button>
-
         {/* Generate Architecture primary button */}
         <motion.button
           type="button"

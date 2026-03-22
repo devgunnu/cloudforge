@@ -16,7 +16,6 @@ const PATHNAME_TO_STAGE: Record<string, ForgeStage> = {
 
 export default function ForgeLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { stageStatus, setStageStatus } = useForgeStore();
 
   useEffect(() => {
     // Extract the last segment of the path, e.g. '/app/build' → 'build'
@@ -25,14 +24,8 @@ export default function ForgeLayout({ children }: { children: React.ReactNode })
     if (!stage) return;
 
     // Sync activeStage to the store — bypass the lock check used in navigateToStage
-    // by setting it directly so dev-mode direct nav always works.
     useForgeStore.setState({ activeStage: stage });
-
-    // Unlock the stage for dev testing if it is currently locked (dev only)
-    if (process.env.NODE_ENV === 'development' && stageStatus[stage] === 'locked') {
-      setStageStatus(stage, 'processing');
-    }
-  }, [pathname, stageStatus, setStageStatus]);
+  }, [pathname]);
 
   return (
     <div

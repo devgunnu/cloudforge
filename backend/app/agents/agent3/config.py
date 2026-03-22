@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-# NOTE: LLM model names are configured via settings.agent3_model /
-#       settings.agent3_fast_model (app/config.py) so they can be
-#       overridden through the .env file without touching source code.
+# NOTE: The LLM model is configured via settings.llm_model (app/config.py)
+#       and can be overridden through the .env file without touching source code.
 
 # ---------------------------------------------------------------------------
 # Retry / iteration limits

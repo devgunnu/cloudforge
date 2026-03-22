@@ -127,24 +127,15 @@ def build_arch_review_subgraph(llm):
 
 
 def _build_llm(model_type: str, model_name: str | None):
-    """Instantiate the chat model based on model_type."""
-    if model_type == "anthropic":
-        from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(
-            model=model_name or "claude-opus-4-6",
-            temperature=0,
-            max_tokens=8096,
-        )
-    elif model_type == "ollama":
-        from langchain_ollama import ChatOllama
-        return ChatOllama(
-            model=model_name or "llama3.1:8b",
-            temperature=0,
-        )
-    else:
-        raise ValueError(
-            f"Unknown model_type '{model_type}'. Use 'anthropic' or 'ollama'."
-        )
+    """Instantiate the chat model. All agents use Anthropic Claude."""
+    from langchain_anthropic import ChatAnthropic
+    from app.config import settings
+    return ChatAnthropic(
+        model=model_name or settings.llm_model,
+        api_key=settings.anthropic_api_key,
+        temperature=0,
+        max_tokens=16384,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -170,10 +161,8 @@ def create_graph(
     Build and compile the full architecture planner graph.
 
     Args:
-        model_type: "anthropic" (default) or "ollama"
-        model_name: Override the default model name.
-                    Anthropic default: "claude-opus-4-6"
-                    Ollama default: "llama3.1:8b"
+        model_type: Ignored — kept for call-site compatibility. All agents use Anthropic.
+        model_name: Override the model name. Defaults to settings.llm_model (Haiku).
         graph_json_path: Path to graph.json for KG traversal.
                          Defaults to CLOUDFORGE_GRAPH_JSON env var or "graph.json".
                          KG traversal is silently skipped if the file does not exist.

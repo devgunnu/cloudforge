@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { MOCK_PROJECTS, type Project, type ProjectStage } from '@/lib/mock-data';
+import { type Project, type ProjectStage, type ProjectStatus } from '@/lib/mock-data';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -26,11 +26,9 @@ interface ApiProject {
 }
 
 interface ProjectStoreState {
-  // Legacy mock-backed state (used by existing dashboard UI)
+  // Projects list (populated from API)
   projects: Project[];
   advanceStage: (id: string) => void;
-  /** @deprecated Use createApiProject instead */
-  createMockProject: (name: string) => string;
 
   // API-backed state
   apiProjects: ApiProject[];
@@ -42,8 +40,7 @@ interface ProjectStoreState {
 }
 
 export const useProjectStore = create<ProjectStoreState>((set) => ({
-  // ── Legacy mock state ──────────────────────────────────────────────────────
-  projects: [...MOCK_PROJECTS],
+  projects: [],
 
   advanceStage: (id) =>
     set((state) => ({
@@ -54,22 +51,6 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
         return { ...p, stage: next };
       }),
     })),
-
-  /** @deprecated Use createApiProject instead */
-  createMockProject: (name) => {
-    const id = `proj-${Date.now()}`;
-    const newProject: Project = {
-      id,
-      name,
-      status: 'draft',
-      stage: 'prd',
-      region: 'us-east-1',
-      updatedAt: 'Just now',
-      description: 'New project — add a description in the PRD chat.',
-    };
-    set((state) => ({ projects: [...state.projects, newProject] }));
-    return id;
-  },
 
   // ── API-backed state ───────────────────────────────────────────────────────
   apiProjects: [],
@@ -83,8 +64,32 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
         headers: { Authorization: `Bearer ${token}` },
       });
       if (resp.ok) {
-        const data = await resp.json();
-        set({ apiProjects: data });
+        const data: ApiProject[] = await resp.json();
+        const now = Date.now();
+        const projects: Project[] = data.map((p) => {
+          const updatedMs = new Date(p.updated_at).getTime();
+          const diffMs = now - updatedMs;
+          const diffMin = Math.floor(diffMs / 60000);
+          const diffHr = Math.floor(diffMs / 3600000);
+          let updatedAt: string;
+          if (diffMin < 60) {
+            updatedAt = `${diffMin}m ago`;
+          } else if (diffHr < 24) {
+            updatedAt = `${diffHr}h ago`;
+          } else {
+            updatedAt = new Date(p.updated_at).toLocaleDateString();
+          }
+          return {
+            id: p.id,
+            name: p.name,
+            description: p.description ?? '',
+            stage: p.stage as ProjectStage,
+            status: p.status as ProjectStatus,
+            region: p.region ?? 'us-east-1',
+            updatedAt,
+          };
+        });
+        set({ apiProjects: data, projects });
       }
     } finally {
       set({ isLoading: false });
@@ -92,7 +97,7 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
   },
 
   createApiProject: async (name: string, token: string) => {
-    const resp = await fetch(`${API_URL}/projects`, {
+    const resp = await fetch(`${API_URL}/projects/`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),

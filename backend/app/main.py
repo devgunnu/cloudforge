@@ -15,6 +15,7 @@ from app.routers.architecture import router as architecture_router
 from app.routers.architecture_sse import router as architecture_sse_router
 from app.routers.build import router as build_router
 from app.routers.deploy import router as deploy_router
+from app.routers.history import router as history_router
 from app.routers.prd import router as prd_router
 
 logger = logging.getLogger(__name__)
@@ -90,6 +91,7 @@ app.include_router(agent3.router)
 app.include_router(prd_router)
 app.include_router(build_router)
 app.include_router(deploy_router)
+app.include_router(history_router)
 
 
 @app.get("/")

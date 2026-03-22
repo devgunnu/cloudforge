@@ -70,7 +70,7 @@ def make_eval_node(llm):
                 goto=END,
             )
         except Exception:
-            # Ollama / plain-text LLM fallback: attempt raw JSON parse
+            # Structured output fallback: attempt raw JSON parse
             try:
                 raw = llm.invoke(messages).content
                 raw = raw.strip()
