@@ -73,6 +73,7 @@ interface ForgeState {
   buildTotal: number;
   deployLog: string[];
   deployModalOpen: boolean;
+  currentProjectId: string | null;
 
   // Actions
   setStageStatus: (stage: ForgeStage, status: StageStatus) => void;
@@ -91,6 +92,7 @@ interface ForgeState {
   updateNodeDeployStatus: (nodeId: string, status: ForgeArchNode['deployStatus']) => void;
   setProjectName: (name: string) => void;
   setDeployModalOpen: (open: boolean) => void;
+  setCurrentProjectId: (id: string | null) => void;
 }
 
 // ── Stage order ───────────────────────────────────────────────────────────────
@@ -153,6 +155,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
   buildTotal: 5,
   deployLog: [],
   deployModalOpen: false,
+  currentProjectId: null,
 
   setStageStatus: (stage, status) =>
     set((state) => ({
@@ -253,4 +256,6 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
   setProjectName: (name) => set({ projectName: name }),
 
   setDeployModalOpen: (open) => set({ deployModalOpen: open }),
+
+  setCurrentProjectId: (id) => set({ currentProjectId: id }),
 }));
