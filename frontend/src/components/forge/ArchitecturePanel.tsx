@@ -388,8 +388,8 @@ export default function ArchitecturePanel() {
         ) ?? null
       : null;
 
-  const handleNodeClick = useCallback((id: string) => {
-    setSelectedNodeId((prev) => (prev === id ? null : id));
+  const handleNodeClick = useCallback((id: string | null) => {
+    setSelectedNodeId(id);
   }, []);
 
   const handleCloseInspector = useCallback(() => {
@@ -653,6 +653,8 @@ export default function ArchitecturePanel() {
                 <ArchDiagram
                   nodes={convertForgeNodes(displayNodes)}
                   edges={convertForgeEdges(displayEdges)}
+                  onNodeSelect={handleNodeClick}
+                  selectedNodeId={selectedNodeId}
                 />
               </motion.div>
             )}

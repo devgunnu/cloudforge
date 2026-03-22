@@ -1,6 +1,9 @@
 'use client';
 
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { ForgeArchNode, ForgeArchEdge } from '@/store/forgeStore';
+import { AWS_ICONS, type AwsIconKey } from '@/lib/aws-icons';
 
 /* ── Types ──────────────────────────────────────────────────────────────────── */
 
@@ -41,6 +44,9 @@ export interface DrawIONode {
   height?: number;
   groupColor?: string;
   layer?: string;
+  /** Optional per-node config override */
+  config?: Record<string, string>;
+  description?: string;
 }
 
 export interface DrawIOEdge {
@@ -53,6 +59,14 @@ export interface DrawIOEdge {
 export interface ArchDiagramProps {
   nodes?: DrawIONode[];
   edges?: DrawIOEdge[];
+  /**
+   * When provided, ArchDiagram runs in controlled mode:
+   * - node clicks call onNodeSelect instead of opening the internal ConfigPanel
+   * - the internal side panel is suppressed
+   */
+  onNodeSelect?: (nodeId: string | null) => void;
+  /** Controlled selected node ID — used for the selection ring when in controlled mode */
+  selectedNodeId?: string | null;
 }
 
 /* ── AWS Service Config ──────────────────────────────────────────────────────── */
@@ -61,135 +75,353 @@ interface ServiceConfig {
   bg: string;
   shape: 'circle' | 'roundedSquare';
   abbr: string;
-  iconContent: string;
 }
 
+interface NodeConfigData {
+  description: string;
+  category: string;
+  tier: string;
+  configProps: Array<{ key: string; value: string }>;
+  useCases: string[];
+  docsUrl: string;
+}
+
+const SERVICE_TO_ICON: Record<string, AwsIconKey> = {
+  lambda: 'lambda',
+  s3: 's3',
+  apigateway: 'apigateway',
+  sqs: 'sqs',
+  eventbridge: 'eventbridge',
+  bedrock: 'bedrock',
+  neptune: 'neptune',
+  amplify: 'amplify',
+  dynamodb: 'dynamodb',
+  rds: 'rds',
+  cloudfront: 'cloudfront',
+  sns: 'sns',
+  cognito: 'generic',
+  ecs: 'generic',
+  stepfunctions: 'generic',
+  route53: 'generic',
+  elb: 'generic',
+  ec2: 'generic',
+  eks: 'generic',
+  kinesis: 'generic',
+  generic: 'generic',
+};
+
 const AWS_SERVICE_CONFIG: Record<AWSServiceId, ServiceConfig> = {
+  lambda:        { bg: '#FF9900', shape: 'circle',        abbr: 'λ'   },
+  s3:            { bg: '#3F8624', shape: 'roundedSquare', abbr: 'S3'  },
+  apigateway:    { bg: '#8C4FFF', shape: 'roundedSquare', abbr: 'API' },
+  sqs:           { bg: '#FF4F8B', shape: 'roundedSquare', abbr: 'SQS' },
+  eventbridge:   { bg: '#FF4F8B', shape: 'roundedSquare', abbr: 'EB'  },
+  bedrock:       { bg: '#01A88D', shape: 'roundedSquare', abbr: 'BR'  },
+  neptune:       { bg: '#7B16FF', shape: 'roundedSquare', abbr: 'NP'  },
+  amplify:       { bg: '#FF4F8B', shape: 'roundedSquare', abbr: 'AMP' },
+  dynamodb:      { bg: '#4053D6', shape: 'roundedSquare', abbr: 'DDB' },
+  rds:           { bg: '#3F8624', shape: 'roundedSquare', abbr: 'RDS' },
+  cloudfront:    { bg: '#FF9900', shape: 'roundedSquare', abbr: 'CF'  },
+  cognito:       { bg: '#DD3522', shape: 'roundedSquare', abbr: 'CGN' },
+  ecs:           { bg: '#FF9900', shape: 'roundedSquare', abbr: 'ECS' },
+  sns:           { bg: '#FF4F8B', shape: 'roundedSquare', abbr: 'SNS' },
+  stepfunctions: { bg: '#FF4F8B', shape: 'roundedSquare', abbr: 'SF'  },
+  route53:       { bg: '#8C4FFF', shape: 'roundedSquare', abbr: 'R53' },
+  elb:           { bg: '#8C4FFF', shape: 'roundedSquare', abbr: 'ELB' },
+  ec2:           { bg: '#FF9900', shape: 'roundedSquare', abbr: 'EC2' },
+  eks:           { bg: '#FF9900', shape: 'roundedSquare', abbr: 'EKS' },
+  kinesis:       { bg: '#8C4FFF', shape: 'roundedSquare', abbr: 'KNS' },
+  generic:       { bg: '#545B64', shape: 'roundedSquare', abbr: '?'   },
+};
+
+const SERVICE_CONFIG_DATA: Partial<Record<AWSServiceId, NodeConfigData>> = {
   lambda: {
-    bg: '#FF9900',
-    shape: 'circle',
-    abbr: 'λ',
-    iconContent: `<text x="28" y="38" text-anchor="middle" fill="white" font-size="28" font-family="Georgia, serif" font-weight="bold">λ</text>`,
+    description: 'Run code without provisioning or managing servers. Pay only for compute time.',
+    category: 'Compute',
+    tier: 'Serverless',
+    configProps: [
+      { key: 'Runtime', value: 'Node.js 20.x' },
+      { key: 'Memory', value: '256 MB' },
+      { key: 'Timeout', value: '30s' },
+      { key: 'Concurrency', value: 'Unreserved' },
+      { key: 'Invocation', value: 'Event-driven' },
+    ],
+    useCases: ['API backends', 'Event processing', 'Data transformation'],
+    docsUrl: 'https://docs.aws.amazon.com/lambda',
   },
   s3: {
-    bg: '#3F8624',
-    shape: 'roundedSquare',
-    abbr: 'S3',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="16" font-family="Arial, sans-serif" font-weight="bold">S3</text>`,
+    description: 'Object storage built to store and retrieve any amount of data from anywhere.',
+    category: 'Storage',
+    tier: 'Managed',
+    configProps: [
+      { key: 'Storage class', value: 'Standard' },
+      { key: 'Versioning', value: 'Enabled' },
+      { key: 'Encryption', value: 'SSE-S3' },
+      { key: 'Access', value: 'Private' },
+      { key: 'Lifecycle', value: 'Configured' },
+    ],
+    useCases: ['Static hosting', 'Data lake', 'Backup & restore', 'Media storage'],
+    docsUrl: 'https://docs.aws.amazon.com/s3',
   },
   apigateway: {
-    bg: '#8C4FFF',
-    shape: 'roundedSquare',
-    abbr: 'API',
-    iconContent: `<text x="28" y="32" text-anchor="middle" fill="white" font-size="12" font-family="monospace" font-weight="bold">&lt;/&gt;</text>`,
+    description: 'Create, publish, and secure APIs at any scale. Supports REST, HTTP, and WebSocket.',
+    category: 'Networking',
+    tier: 'Managed',
+    configProps: [
+      { key: 'Type', value: 'REST API' },
+      { key: 'Auth', value: 'Cognito User Pool' },
+      { key: 'Stage', value: 'prod' },
+      { key: 'Throttle', value: '1000 req/s' },
+      { key: 'Cache', value: 'Disabled' },
+    ],
+    useCases: ['Microservices gateway', 'Lambda proxy', 'WebSocket APIs'],
+    docsUrl: 'https://docs.aws.amazon.com/apigateway',
   },
   sqs: {
-    bg: '#232F3E',
-    shape: 'roundedSquare',
-    abbr: 'SQS',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="13" font-family="Arial, sans-serif" font-weight="bold">SQS</text>`,
+    description: 'Fully managed message queuing for microservices and distributed systems.',
+    category: 'Messaging',
+    tier: 'Serverless',
+    configProps: [
+      { key: 'Type', value: 'Standard' },
+      { key: 'Visibility timeout', value: '30s' },
+      { key: 'Message retention', value: '4 days' },
+      { key: 'Max message size', value: '256 KB' },
+      { key: 'DLQ', value: 'Configured' },
+    ],
+    useCases: ['Task queues', 'Load leveling', 'Decoupling services'],
+    docsUrl: 'https://docs.aws.amazon.com/sqs',
   },
   eventbridge: {
-    bg: '#FF4F8B',
-    shape: 'roundedSquare',
-    abbr: 'EB',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="10" font-family="Arial, sans-serif" font-weight="bold">Event</text>`,
+    description: 'Serverless event bus that connects app data from your own apps and AWS services.',
+    category: 'Messaging',
+    tier: 'Serverless',
+    configProps: [
+      { key: 'Bus', value: 'Default' },
+      { key: 'Schedule', value: 'cron(0 1 * * ? *)' },
+      { key: 'Target', value: 'Lambda' },
+      { key: 'Retry', value: '2 attempts' },
+      { key: 'DLQ', value: 'Enabled' },
+    ],
+    useCases: ['Event-driven workflows', 'Scheduled tasks', 'Cross-account events'],
+    docsUrl: 'https://docs.aws.amazon.com/eventbridge',
   },
   bedrock: {
-    bg: '#01A88D',
-    shape: 'roundedSquare',
-    abbr: 'BR',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="bold">Bedrock</text>`,
+    description: 'Fully managed service for accessing foundation models via a single API.',
+    category: 'AI / ML',
+    tier: 'Managed',
+    configProps: [
+      { key: 'Model', value: 'amazon.nova-pro-v1' },
+      { key: 'Max tokens', value: '4096' },
+      { key: 'Temperature', value: '0.7' },
+      { key: 'Top-p', value: '0.9' },
+      { key: 'Guardrails', value: 'Enabled' },
+    ],
+    useCases: ['Agents', 'RAG', 'Summarization', 'Code generation'],
+    docsUrl: 'https://docs.aws.amazon.com/bedrock',
   },
   neptune: {
-    bg: '#7B16FF',
-    shape: 'roundedSquare',
-    abbr: 'NP',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="10" font-family="Arial, sans-serif" font-weight="bold">Neptune</text>`,
+    description: 'Fast, reliable, fully managed graph database for highly connected datasets.',
+    category: 'Database',
+    tier: 'Managed',
+    configProps: [
+      { key: 'Engine', value: 'Neptune 1.3' },
+      { key: 'Instance', value: 'db.r6g.large' },
+      { key: 'Query language', value: 'Gremlin / SPARQL' },
+      { key: 'Multi-AZ', value: 'Yes' },
+      { key: 'Backup', value: '7 days' },
+    ],
+    useCases: ['Knowledge graphs', 'Fraud detection', 'Recommendation engines'],
+    docsUrl: 'https://docs.aws.amazon.com/neptune',
   },
   amplify: {
-    bg: '#FF4F8B',
-    shape: 'roundedSquare',
-    abbr: 'AMP',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="bold">Amplify</text>`,
+    description: 'Build full-stack web and mobile apps with AWS. Includes hosting, auth, and data.',
+    category: 'Frontend / Hosting',
+    tier: 'Managed',
+    configProps: [
+      { key: 'Framework', value: 'Next.js' },
+      { key: 'Branch', value: 'main' },
+      { key: 'Build', value: 'Auto-deploy' },
+      { key: 'CDN', value: 'CloudFront' },
+      { key: 'Custom domain', value: 'Configured' },
+    ],
+    useCases: ['Static hosting', 'SSR apps', 'CI/CD pipelines'],
+    docsUrl: 'https://docs.aws.amazon.com/amplify',
   },
   dynamodb: {
-    bg: '#4053D6',
-    shape: 'roundedSquare',
-    abbr: 'DDB',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="bold">DDB</text>`,
+    description: 'Serverless, NoSQL, fully managed database with single-digit millisecond performance.',
+    category: 'Database',
+    tier: 'Serverless',
+    configProps: [
+      { key: 'Billing mode', value: 'On-demand' },
+      { key: 'Replication', value: 'Single-region' },
+      { key: 'TTL', value: 'Enabled' },
+      { key: 'Streams', value: 'Enabled' },
+      { key: 'Encryption', value: 'AWS-owned key' },
+    ],
+    useCases: ['Session stores', 'Leaderboards', 'Real-time apps'],
+    docsUrl: 'https://docs.aws.amazon.com/dynamodb',
   },
   rds: {
-    bg: '#3F8624',
-    shape: 'roundedSquare',
-    abbr: 'RDS',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="12" font-family="Arial, sans-serif" font-weight="bold">RDS</text>`,
+    description: 'Managed relational database service for PostgreSQL, MySQL, and more.',
+    category: 'Database',
+    tier: 'Managed',
+    configProps: [
+      { key: 'Engine', value: 'PostgreSQL 16' },
+      { key: 'Instance', value: 'db.t3.medium' },
+      { key: 'Storage', value: '100 GB gp3' },
+      { key: 'Multi-AZ', value: 'Yes' },
+      { key: 'Backup', value: '7 days' },
+    ],
+    useCases: ['OLTP workloads', 'Application databases', 'Microservice backends'],
+    docsUrl: 'https://docs.aws.amazon.com/rds',
   },
   cloudfront: {
-    bg: '#FF9900',
-    shape: 'roundedSquare',
-    abbr: 'CF',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="12" font-family="Arial, sans-serif" font-weight="bold">CF</text>`,
+    description: 'Fast, highly secure global content delivery network (CDN).',
+    category: 'Networking',
+    tier: 'Managed',
+    configProps: [
+      { key: 'Price class', value: 'All Edge Locations' },
+      { key: 'Cache policy', value: 'CachingOptimized' },
+      { key: 'HTTPS', value: 'Required' },
+      { key: 'WAF', value: 'Attached' },
+      { key: 'Geo restriction', value: 'None' },
+    ],
+    useCases: ['Static asset delivery', 'API acceleration', 'DDoS protection'],
+    docsUrl: 'https://docs.aws.amazon.com/cloudfront',
   },
   cognito: {
-    bg: '#DD3522',
-    shape: 'roundedSquare',
-    abbr: 'CGN',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="bold">Cognito</text>`,
+    description: 'Add user sign-up, sign-in, and access control to your apps.',
+    category: 'Security / Identity',
+    tier: 'Managed',
+    configProps: [
+      { key: 'Pool type', value: 'User Pool' },
+      { key: 'MFA', value: 'Optional TOTP' },
+      { key: 'OAuth', value: 'Google, GitHub' },
+      { key: 'Password policy', value: 'Strong' },
+      { key: 'Token expiry', value: '1 hour' },
+    ],
+    useCases: ['User authentication', 'Social sign-in', 'Token vending'],
+    docsUrl: 'https://docs.aws.amazon.com/cognito',
   },
   ecs: {
-    bg: '#FF9900',
-    shape: 'roundedSquare',
-    abbr: 'ECS',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="12" font-family="Arial, sans-serif" font-weight="bold">ECS</text>`,
+    description: 'Fully managed container orchestration service. Run Docker containers at scale.',
+    category: 'Compute',
+    tier: 'Container',
+    configProps: [
+      { key: 'Launch type', value: 'Fargate' },
+      { key: 'CPU', value: '1 vCPU' },
+      { key: 'Memory', value: '2 GB' },
+      { key: 'Auto-scaling', value: 'Target tracking' },
+      { key: 'Service mesh', value: 'App Mesh' },
+    ],
+    useCases: ['Microservices', 'Batch processing', 'Long-running tasks'],
+    docsUrl: 'https://docs.aws.amazon.com/ecs',
   },
   sns: {
-    bg: '#FF4F8B',
-    shape: 'roundedSquare',
-    abbr: 'SNS',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="12" font-family="Arial, sans-serif" font-weight="bold">SNS</text>`,
+    description: 'Fully managed pub/sub messaging for application-to-person and app-to-app notifications.',
+    category: 'Messaging',
+    tier: 'Serverless',
+    configProps: [
+      { key: 'Type', value: 'Standard Topic' },
+      { key: 'Protocol', value: 'Email / SQS / Lambda' },
+      { key: 'Subscriptions', value: '3' },
+      { key: 'Encryption', value: 'SSE-KMS' },
+      { key: 'Delivery retry', value: 'Configured' },
+    ],
+    useCases: ['Fan-out messaging', 'Alerts', 'Mobile push notifications'],
+    docsUrl: 'https://docs.aws.amazon.com/sns',
   },
   stepfunctions: {
-    bg: '#FF4F8B',
-    shape: 'roundedSquare',
-    abbr: 'SF',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="bold">Step Fn</text>`,
+    description: 'Visual workflow service to coordinate distributed applications using state machines.',
+    category: 'Orchestration',
+    tier: 'Serverless',
+    configProps: [
+      { key: 'Type', value: 'Standard Workflow' },
+      { key: 'Max duration', value: '1 year' },
+      { key: 'Logging', value: 'CloudWatch' },
+      { key: 'X-Ray', value: 'Enabled' },
+      { key: 'Error handling', value: 'Retry + Catch' },
+    ],
+    useCases: ['Workflow orchestration', 'ETL pipelines', 'Saga pattern'],
+    docsUrl: 'https://docs.aws.amazon.com/step-functions',
   },
   route53: {
-    bg: '#8C4FFF',
-    shape: 'roundedSquare',
-    abbr: 'R53',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="12" font-family="Arial, sans-serif" font-weight="bold">R53</text>`,
+    description: 'Highly available and scalable cloud Domain Name System (DNS) web service.',
+    category: 'Networking',
+    tier: 'Managed',
+    configProps: [
+      { key: 'Routing policy', value: 'Latency-based' },
+      { key: 'Health checks', value: 'Enabled' },
+      { key: 'Failover', value: 'Active-Active' },
+      { key: 'DNSSEC', value: 'Enabled' },
+      { key: 'TTL', value: '60s' },
+    ],
+    useCases: ['DNS routing', 'Failover', 'Traffic management'],
+    docsUrl: 'https://docs.aws.amazon.com/route53',
   },
   elb: {
-    bg: '#8C4FFF',
-    shape: 'roundedSquare',
-    abbr: 'ELB',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="12" font-family="Arial, sans-serif" font-weight="bold">ELB</text>`,
+    description: 'Distribute incoming traffic across multiple targets for high availability.',
+    category: 'Networking',
+    tier: 'Managed',
+    configProps: [
+      { key: 'Type', value: 'Application Load Balancer' },
+      { key: 'Scheme', value: 'Internet-facing' },
+      { key: 'Target', value: 'ECS Tasks' },
+      { key: 'SSL policy', value: 'ELBSecurityPolicy-TLS13' },
+      { key: 'Access logs', value: 'S3 Enabled' },
+    ],
+    useCases: ['Blue/green deploys', 'Multi-zone HA', 'Path-based routing'],
+    docsUrl: 'https://docs.aws.amazon.com/elasticloadbalancing',
   },
   ec2: {
-    bg: '#FF9900',
-    shape: 'roundedSquare',
-    abbr: 'EC2',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="12" font-family="Arial, sans-serif" font-weight="bold">EC2</text>`,
+    description: 'Resizable compute capacity in the cloud. Launch virtual machines in minutes.',
+    category: 'Compute',
+    tier: 'IaaS',
+    configProps: [
+      { key: 'Instance type', value: 't3.medium' },
+      { key: 'AMI', value: 'Amazon Linux 2023' },
+      { key: 'Storage', value: '30 GB gp3' },
+      { key: 'Auto Scaling', value: 'Min 1 / Max 5' },
+      { key: 'Placement', value: 'Multi-AZ' },
+    ],
+    useCases: ['Custom runtimes', 'Lift-and-shift', 'Stateful workloads'],
+    docsUrl: 'https://docs.aws.amazon.com/ec2',
   },
   eks: {
-    bg: '#FF9900',
-    shape: 'roundedSquare',
-    abbr: 'EKS',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="12" font-family="Arial, sans-serif" font-weight="bold">EKS</text>`,
+    description: 'Managed Kubernetes service to run Kubernetes without installing your own cluster.',
+    category: 'Compute',
+    tier: 'Container',
+    configProps: [
+      { key: 'Version', value: 'K8s 1.30' },
+      { key: 'Node group', value: 'Managed' },
+      { key: 'Instance type', value: 'm5.large' },
+      { key: 'Nodes', value: '2–10 (auto-scale)' },
+      { key: 'Add-ons', value: 'CoreDNS, kube-proxy' },
+    ],
+    useCases: ['Container orchestration', 'Microservices platform', 'ML workloads'],
+    docsUrl: 'https://docs.aws.amazon.com/eks',
   },
   kinesis: {
-    bg: '#8C4FFF',
-    shape: 'roundedSquare',
-    abbr: 'KNS',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="11" font-family="Arial, sans-serif" font-weight="bold">Kinesis</text>`,
+    description: 'Collect, process, and analyze real-time streaming data at any scale.',
+    category: 'Streaming',
+    tier: 'Managed',
+    configProps: [
+      { key: 'Shards', value: '2' },
+      { key: 'Retention', value: '24 hours' },
+      { key: 'Enhanced fan-out', value: 'Enabled' },
+      { key: 'Encryption', value: 'SSE-KMS' },
+      { key: 'Consumer', value: 'Lambda' },
+    ],
+    useCases: ['Real-time analytics', 'Log ingestion', 'IoT data streams'],
+    docsUrl: 'https://docs.aws.amazon.com/kinesis',
   },
   generic: {
-    bg: '#545B64',
-    shape: 'roundedSquare',
-    abbr: '?',
-    iconContent: `<text x="28" y="36" text-anchor="middle" fill="white" font-size="20" font-family="Arial, sans-serif" font-weight="bold">?</text>`,
+    description: 'AWS service node.',
+    category: 'AWS',
+    tier: 'Managed',
+    configProps: [],
+    useCases: [],
+    docsUrl: 'https://aws.amazon.com',
   },
 };
 
@@ -300,6 +532,354 @@ function hexToRgba(hex: string, alpha: number): string {
   return `rgba(${r},${g},${b},${alpha})`;
 }
 
+/* ── Tooltip DOM Component ───────────────────────────────────────────────────── */
+
+interface TooltipState {
+  node: DrawIONode;
+  x: number;
+  y: number;
+}
+
+function NodeTooltip({ state }: { state: TooltipState }) {
+  const service = state.node.service ?? 'generic';
+  const config = SERVICE_CONFIG_DATA[service];
+  const serviceConf = AWS_SERVICE_CONFIG[service];
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        left: state.x + 14,
+        top: state.y - 8,
+        zIndex: 1000,
+        pointerEvents: 'none',
+        background: '#1a1a2e',
+        border: `1px solid ${serviceConf.bg}40`,
+        borderLeft: `3px solid ${serviceConf.bg}`,
+        borderRadius: 8,
+        padding: '10px 14px',
+        minWidth: 200,
+        maxWidth: 280,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <span
+          style={{
+            background: serviceConf.bg,
+            borderRadius: serviceConf.shape === 'circle' ? '50%' : 4,
+            width: 20,
+            height: 20,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 9,
+            color: 'white',
+            fontWeight: 700,
+            flexShrink: 0,
+          }}
+        >
+          {serviceConf.abbr.slice(0, 2)}
+        </span>
+        <span style={{ color: '#ffffff', fontWeight: 600, fontSize: 12, fontFamily: 'Arial, sans-serif' }}>
+          {state.node.label}
+        </span>
+      </div>
+      {state.node.sublabel && (
+        <div style={{ color: serviceConf.bg, fontSize: 11, marginBottom: 4, fontFamily: 'Arial, sans-serif' }}>
+          {state.node.sublabel}
+        </div>
+      )}
+      {config && (
+        <div style={{ color: '#aaaacc', fontSize: 11, lineHeight: 1.4, fontFamily: 'Arial, sans-serif' }}>
+          {config.description}
+        </div>
+      )}
+      <div style={{ marginTop: 6, color: '#888', fontSize: 10, fontFamily: 'monospace' }}>
+        Click to view config →
+      </div>
+    </div>
+  );
+}
+
+/* ── Config Side Panel ───────────────────────────────────────────────────────── */
+
+interface ConfigPanelProps {
+  node: DrawIONode;
+  onClose: () => void;
+}
+
+function ConfigPanel({ node, onClose }: ConfigPanelProps) {
+  const service = node.service ?? 'generic';
+  const serviceConf = AWS_SERVICE_CONFIG[service];
+  const configData = SERVICE_CONFIG_DATA[service];
+
+  // Merge node-level config overrides with defaults
+  const configProps = [
+    ...(configData?.configProps ?? []),
+    ...Object.entries(node.config ?? {}).map(([key, value]) => ({ key, value })),
+  ];
+
+  const tierColors: Record<string, string> = {
+    Serverless: '#01A88D',
+    Managed: '#4053D6',
+    Container: '#FF9900',
+    IaaS: '#545B64',
+    Streaming: '#8C4FFF',
+    Orchestration: '#FF4F8B',
+    'AI / ML': '#01A88D',
+    'Security / Identity': '#DD3522',
+    'Frontend / Hosting': '#FF4F8B',
+    Database: '#4053D6',
+  };
+
+  const tierColor = tierColors[configData?.tier ?? ''] ?? '#545B64';
+
+  return (
+    <div
+      style={{
+        width: 300,
+        minWidth: 300,
+        height: '100%',
+        background: '#0f0f1a',
+        borderLeft: `1px solid ${serviceConf.bg}30`,
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: 'Arial, sans-serif',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          padding: '16px 16px 12px',
+          borderBottom: `1px solid ${serviceConf.bg}25`,
+          background: `linear-gradient(135deg, ${serviceConf.bg}18, transparent)`,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                background: serviceConf.bg,
+                borderRadius: serviceConf.shape === 'circle' ? '50%' : 8,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <span style={{ color: 'white', fontWeight: 700, fontSize: 11 }}>
+                {serviceConf.abbr}
+              </span>
+            </div>
+            <div>
+              <div style={{ color: '#ffffff', fontWeight: 700, fontSize: 14, lineHeight: 1.2 }}>
+                {node.label}
+              </div>
+              {node.sublabel && (
+                <div style={{ color: serviceConf.bg, fontSize: 11, marginTop: 2 }}>
+                  {node.sublabel}
+                </div>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close config panel"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#666',
+              cursor: 'pointer',
+              fontSize: 18,
+              lineHeight: 1,
+              padding: '0 4px',
+              flexShrink: 0,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        {/* Category + Tier badges */}
+        <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+          {configData?.category && (
+            <span
+              style={{
+                background: `${serviceConf.bg}22`,
+                color: serviceConf.bg,
+                border: `1px solid ${serviceConf.bg}44`,
+                borderRadius: 4,
+                padding: '2px 8px',
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              {configData.category}
+            </span>
+          )}
+          {configData?.tier && (
+            <span
+              style={{
+                background: `${tierColor}22`,
+                color: tierColor,
+                border: `1px solid ${tierColor}44`,
+                borderRadius: 4,
+                padding: '2px 8px',
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              {configData.tier}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Scrollable body */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
+
+        {/* Description */}
+        {configData?.description && (
+          <p style={{ color: '#aaaacc', fontSize: 12, lineHeight: 1.5, margin: '0 0 16px' }}>
+            {node.description ?? configData.description}
+          </p>
+        )}
+
+        {/* Config Properties */}
+        {configProps.length > 0 && (
+          <section style={{ marginBottom: 18 }}>
+            <h4 style={{ color: '#888', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' }}>
+              Configuration
+            </h4>
+            <div
+              style={{
+                background: '#ffffff08',
+                border: '1px solid #ffffff12',
+                borderRadius: 6,
+                overflow: 'hidden',
+              }}
+            >
+              {configProps.map(({ key, value }, i) => (
+                <div
+                  key={key}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '7px 10px',
+                    borderBottom: i < configProps.length - 1 ? '1px solid #ffffff0a' : 'none',
+                  }}
+                >
+                  <span style={{ color: '#888', fontSize: 11 }}>{key}</span>
+                  <span
+                    style={{
+                      color: '#dde',
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      background: '#ffffff0a',
+                      padding: '1px 6px',
+                      borderRadius: 3,
+                      maxWidth: 140,
+                      textOverflow: 'ellipsis',
+                      overflow: 'hidden',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Use Cases */}
+        {configData?.useCases && configData.useCases.length > 0 && (
+          <section style={{ marginBottom: 18 }}>
+            <h4 style={{ color: '#888', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' }}>
+              Use Cases
+            </h4>
+            <ul style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+              {configData.useCases.map((uc) => (
+                <li
+                  key={uc}
+                  style={{
+                    color: '#aaaacc',
+                    fontSize: 12,
+                    padding: '3px 0 3px 14px',
+                    position: 'relative',
+                    lineHeight: 1.4,
+                  }}
+                >
+                  <span
+                    style={{
+                      position: 'absolute',
+                      left: 0,
+                      top: 7,
+                      width: 5,
+                      height: 5,
+                      borderRadius: '50%',
+                      background: serviceConf.bg,
+                    }}
+                  />
+                  {uc}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {/* Node ID (useful for debugging / referencing) */}
+        <section>
+          <h4 style={{ color: '#888', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' }}>
+            Node ID
+          </h4>
+          <code
+            style={{
+              color: '#666',
+              fontSize: 11,
+              background: '#ffffff08',
+              border: '1px solid #ffffff0f',
+              borderRadius: 4,
+              padding: '4px 8px',
+              display: 'block',
+            }}
+          >
+            {node.id}
+          </code>
+        </section>
+      </div>
+
+      {/* Footer */}
+      {configData?.docsUrl && (
+        <div style={{ padding: '10px 16px', borderTop: '1px solid #ffffff10' }}>
+          <a
+            href={configData.docsUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              color: serviceConf.bg,
+              fontSize: 12,
+              textDecoration: 'none',
+              fontWeight: 500,
+            }}
+          >
+            <span>AWS Documentation</span>
+            <span style={{ fontSize: 10 }}>↗</span>
+          </a>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Sub-components ──────────────────────────────────────────────────────────── */
 
 function GroupContainer({ node }: { node: DrawIONode }) {
@@ -344,29 +924,52 @@ function GroupContainer({ node }: { node: DrawIONode }) {
   );
 }
 
-function ServiceNode({ node, iconSize }: { node: DrawIONode; iconSize: number }) {
+interface ServiceNodeProps {
+  node: DrawIONode;
+  iconSize: number;
+  isSelected: boolean;
+  onSelect: (node: DrawIONode) => void;
+  onHover: (node: DrawIONode, x: number, y: number) => void;
+  onLeave: () => void;
+}
+
+function ServiceNode({ node, iconSize, isSelected, onSelect, onHover, onLeave }: ServiceNodeProps) {
+  const cx = node.x + iconSize / 2;
+
   if (node.type === 'user') {
-    const cx = node.x + iconSize / 2;
-    const cy = node.y + 16;
+    const icon = AWS_ICONS.users;
+    const scale = iconSize / 48;
     return (
-      <g>
-        <circle
-          cx={cx}
-          cy={cy}
-          r={12}
-          fill="none"
-          stroke="#555"
-          strokeWidth={2}
-        />
-        <path
-          d={`M ${cx - 18} ${cy + 30} Q ${cx} ${cy + 14} ${cx + 18} ${cy + 30}`}
-          fill="none"
-          stroke="#555"
-          strokeWidth={2}
-        />
+      <g
+        role="button"
+        aria-label={node.label}
+        tabIndex={0}
+        style={{ cursor: 'pointer' }}
+        onClick={() => onSelect(node)}
+        onMouseEnter={(e) => onHover(node, e.clientX, e.clientY)}
+        onMouseMove={(e) => onHover(node, e.clientX, e.clientY)}
+        onMouseLeave={onLeave}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(node); }}
+      >
+        {isSelected && (
+          <circle
+            cx={cx}
+            cy={node.y + iconSize / 2}
+            r={iconSize / 2 + 6}
+            fill="none"
+            stroke="#8C4FFF"
+            strokeWidth={2}
+            strokeDasharray="4,3"
+          />
+        )}
+        <g transform={`translate(${node.x}, ${node.y}) scale(${scale})`}>
+          <g transform={icon.glyphTransform}>
+            <path d={icon.path} fill="#555555" />
+          </g>
+        </g>
         <text
           x={cx}
-          y={node.y + iconSize + 18}
+          y={node.y + iconSize + 14}
           textAnchor="middle"
           fill="#222"
           fontSize={11}
@@ -380,10 +983,39 @@ function ServiceNode({ node, iconSize }: { node: DrawIONode; iconSize: number })
 
   const service = node.service ?? 'generic';
   const config = AWS_SERVICE_CONFIG[service];
-  const cx = node.x + iconSize / 2;
+  const iconKey = SERVICE_TO_ICON[service] ?? 'generic';
+  const icon = AWS_ICONS[iconKey];
+  const [vbW, vbH] = icon.viewBox.split(' ').slice(2).map(Number);
+  const scale = iconSize / Math.max(vbW, vbH);
 
   return (
-    <g>
+    <g
+      role="button"
+      aria-label={`${node.label}${node.sublabel ? ` — ${node.sublabel}` : ''}`}
+      tabIndex={0}
+      style={{ cursor: 'pointer' }}
+      onClick={() => onSelect(node)}
+      onMouseEnter={(e) => onHover(node, e.clientX, e.clientY)}
+      onMouseMove={(e) => onHover(node, e.clientX, e.clientY)}
+      onMouseLeave={onLeave}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(node); }}
+    >
+      {/* Selection ring */}
+      {isSelected && (
+        <rect
+          x={node.x - 5}
+          y={node.y - 5}
+          width={iconSize + 10}
+          height={iconSize + 10}
+          rx={12}
+          fill="none"
+          stroke={config.bg}
+          strokeWidth={2}
+          strokeDasharray="4,3"
+          opacity={0.9}
+        />
+      )}
+      {/* Background shape */}
       {config.shape === 'circle' ? (
         <circle
           cx={cx}
@@ -401,17 +1033,12 @@ function ServiceNode({ node, iconSize }: { node: DrawIONode; iconSize: number })
           fill={config.bg}
         />
       )}
-      {/* Icon inner content rendered via a nested SVG to scope the coordinate system */}
-      <svg
-        x={node.x}
-        y={node.y}
-        width={iconSize}
-        height={iconSize}
-        viewBox="0 0 56 56"
-        overflow="visible"
-      >
-        <g dangerouslySetInnerHTML={{ __html: config.iconContent }} />
-      </svg>
+      {/* Real AWS icon path scaled to fit iconSize */}
+      <g transform={`translate(${node.x}, ${node.y}) scale(${scale})`}>
+        <g transform={icon.glyphTransform}>
+          <path d={icon.path} fill="white" />
+        </g>
+      </g>
       {/* Primary label */}
       <text
         x={cx}
@@ -457,9 +1084,6 @@ function DiagramEdge({
   const getCenter = (n: DrawIONode): [number, number] => {
     if (n.type === 'group') {
       return [n.x + (n.width ?? 200) / 2, n.y + (n.height ?? 150) / 2];
-    }
-    if (n.type === 'user') {
-      return [n.x + iconSize / 2, n.y + iconSize / 2];
     }
     return [n.x + iconSize / 2, n.y + iconSize / 2];
   };
@@ -515,12 +1139,55 @@ function SectionLabel({ node }: { node: DrawIONode }) {
 
 /* ── Main Component ──────────────────────────────────────────────────────────── */
 
-export default function ArchDiagram({ nodes: propNodes, edges: propEdges }: ArchDiagramProps) {
+export default function ArchDiagram({
+  nodes: propNodes,
+  edges: propEdges,
+  onNodeSelect,
+  selectedNodeId: controlledSelectedNodeId,
+}: ArchDiagramProps) {
   const nodes = propNodes ?? DEFAULT_NODES;
   const edges = propEdges ?? DEFAULT_EDGES;
 
+  // Controlled mode: parent owns selection; uncontrolled: internal state + ConfigPanel
+  const isControlled = onNodeSelect !== undefined;
+
+  const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
+  const [tooltip, setTooltip] = useState<TooltipState | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => { setMounted(true); }, []);
+
   const ICON_SIZE = 56;
   const PAD = 60;
+
+  const selectedNodeId = isControlled ? (controlledSelectedNodeId ?? null) : internalSelectedId;
+  // ConfigPanel only shown in uncontrolled mode (parent provides its own inspector)
+  const selectedNode = !isControlled && selectedNodeId
+    ? nodes.find((n) => n.id === selectedNodeId) ?? null
+    : null;
+
+  const handleSelect = useCallback((node: DrawIONode) => {
+    if (isControlled) {
+      onNodeSelect(node.id === (controlledSelectedNodeId ?? null) ? null : node.id);
+    } else {
+      setInternalSelectedId((prev) => (prev === node.id ? null : node.id));
+    }
+    setTooltip(null);
+  }, [isControlled, onNodeSelect, controlledSelectedNodeId]);
+
+  const handleHover = useCallback((node: DrawIONode, x: number, y: number) => {
+    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+    setTooltip((prev) => (prev?.node.id === node.id ? { node, x, y } : prev));
+    tooltipTimerRef.current = setTimeout(() => {
+      setTooltip({ node, x, y });
+    }, 250);
+  }, []);
+
+  const handleLeave = useCallback(() => {
+    if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
+    setTooltip(null);
+  }, []);
 
   const serviceNodes = nodes.filter(
     (n) => n.type !== 'group' && n.type !== 'sectionLabel',
@@ -542,7 +1209,6 @@ export default function ArchDiagram({ nodes: propNodes, edges: propEdges }: Arch
   const svgWidth = Math.max(maxX + PAD, 800);
   const svgHeight = Math.max(maxY + PAD, 600);
 
-  /* Accessible aria label */
   const nodeMap = new Map(nodes.map((n) => [n.id, n]));
   const ariaLabel = [
     'AWS architecture diagram.',
@@ -567,74 +1233,106 @@ export default function ArchDiagram({ nodes: propNodes, edges: propEdges }: Arch
       style={{
         width: '100%',
         height: '100%',
-        overflow: 'auto',
+        display: 'flex',
+        overflow: 'hidden',
         background: '#FAFAFA',
         borderRadius: '12px',
+        position: 'relative',
       }}
-      role="img"
       aria-label={ariaLabel}
     >
-      <svg
-        width={svgWidth}
-        height={svgHeight}
-        viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-        style={{ display: 'block', minWidth: '100%' }}
-        aria-hidden="true"
+      {/* SVG diagram — shrinks when panel is open */}
+      <div
+        style={{
+          flex: 1,
+          overflow: 'auto',
+          minWidth: 0,
+          transition: 'flex 0.25s ease',
+        }}
       >
-        <defs>
-          <marker
-            id="arrow-dark"
-            markerWidth={8}
-            markerHeight={6}
-            refX={7}
-            refY={3}
-            orient="auto"
-          >
-            <polygon points="0 0, 8 3, 0 6" fill="#333" />
-          </marker>
-          <marker
-            id="arrow-dashed"
-            markerWidth={8}
-            markerHeight={6}
-            refX={7}
-            refY={3}
-            orient="auto"
-          >
-            <polygon points="0 0, 8 3, 0 6" fill="#666" />
-          </marker>
-        </defs>
+        <svg
+          width={svgWidth}
+          height={svgHeight}
+          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+          style={{ display: 'block', minWidth: '100%' }}
+          aria-hidden="true"
+        >
+          <defs>
+            <marker
+              id="arrow-dark"
+              markerWidth={8}
+              markerHeight={6}
+              refX={7}
+              refY={3}
+              orient="auto"
+            >
+              <polygon points="0 0, 8 3, 0 6" fill="#333" />
+            </marker>
+            <marker
+              id="arrow-dashed"
+              markerWidth={8}
+              markerHeight={6}
+              refX={7}
+              refY={3}
+              orient="auto"
+            >
+              <polygon points="0 0, 8 3, 0 6" fill="#666" />
+            </marker>
+          </defs>
 
-        {/* Layer 1: Group containers — rendered behind everything */}
-        {nodes
-          .filter((n) => n.type === 'group')
-          .map((node) => (
-            <GroupContainer key={node.id} node={node} />
+          {/* Layer 1: Group containers */}
+          {nodes
+            .filter((n) => n.type === 'group')
+            .map((node) => (
+              <GroupContainer key={node.id} node={node} />
+            ))}
+
+          {/* Layer 2: Edges */}
+          {edges.map((edge, i) => (
+            <DiagramEdge
+              key={`${edge.from}-${edge.to}-${i}`}
+              edge={edge}
+              nodes={nodes}
+              iconSize={ICON_SIZE}
+            />
           ))}
 
-        {/* Layer 2: Edges */}
-        {edges.map((edge, i) => (
-          <DiagramEdge
-            key={`${edge.from}-${edge.to}-${i}`}
-            edge={edge}
-            nodes={nodes}
-            iconSize={ICON_SIZE}
-          />
-        ))}
+          {/* Layer 3: Service and user nodes */}
+          {nodes
+            .filter((n) => n.type === 'service' || n.type === 'user')
+            .map((node) => (
+              <ServiceNode
+                key={node.id}
+                node={node}
+                iconSize={ICON_SIZE}
+                isSelected={node.id === selectedNodeId}
+                onSelect={handleSelect}
+                onHover={handleHover}
+                onLeave={handleLeave}
+              />
+            ))}
 
-        {/* Layer 3: Service and user nodes */}
-        {nodes
-          .filter((n) => n.type === 'service' || n.type === 'user')
-          .map((node) => (
-            <ServiceNode key={node.id} node={node} iconSize={ICON_SIZE} />
-          ))}
+          {/* Layer 4: Section labels */}
+          {nodes
+            .filter((n) => n.type === 'sectionLabel')
+            .map((node) => (
+              <SectionLabel key={node.id} node={node} />
+            ))}
+        </svg>
+      </div>
 
-        {/* Layer 4: Section labels — on top */}
-        {nodes
-          .filter((n) => n.type === 'sectionLabel')
-          .map((node) => (
-            <SectionLabel key={node.id} node={node} />
-          ))}
-      </svg>
+      {/* Config side panel */}
+      {selectedNode && selectedNode.type !== 'sectionLabel' && (
+        <ConfigPanel
+          node={selectedNode}
+          onClose={() => setInternalSelectedId(null)}
+        />
+      )}
+
+      {/* Tooltip — portalled to document.body to escape any parent transform/overflow */}
+      {mounted && tooltip && !selectedNodeId &&
+        createPortal(<NodeTooltip state={tooltip} />, document.body)
+      }
     </div>
   );
 }
