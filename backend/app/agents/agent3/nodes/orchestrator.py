@@ -81,6 +81,9 @@ def _build_arch_ctx_json(state: AgentState, service_id: str) -> str:
     outgoing = [c for c in connections if c["source"] == service_id]
     incoming = [c for c in connections if c["target"] == service_id]
 
+    # Build a lookup so we can enrich connections with the peer service type
+    svc_type_by_id: dict[str, str] = {s["id"]: s["service_type"] for s in services}
+
     return json.dumps(
         {
             "service_id": service_id,
@@ -88,8 +91,22 @@ def _build_arch_ctx_json(state: AgentState, service_id: str) -> str:
             "label": svc["label"],
             "config": svc["config"],
             "connections": describe_service(svc, connections),
-            "incoming": [{"from": c["source"], "via": c["relationship"]} for c in incoming],
-            "outgoing": [{"to": c["target"], "via": c["relationship"]} for c in outgoing],
+            "incoming": [
+                {
+                    "from": c["source"],
+                    "via": c["relationship"],
+                    "service_type": svc_type_by_id.get(c["source"], "unknown"),
+                }
+                for c in incoming
+            ],
+            "outgoing": [
+                {
+                    "to": c["target"],
+                    "via": c["relationship"],
+                    "service_type": svc_type_by_id.get(c["target"], "unknown"),
+                }
+                for c in outgoing
+            ],
         },
         indent=2,
     )

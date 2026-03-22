@@ -216,6 +216,8 @@ def test_orchestrator_node(state: AgentState) -> dict[str, Any]:
             test_result = run_tests(service_code, test_code, language, service_id)
         except Exception as e:
             error_msg = f"Test execution error: {e}"
+            # Save the generated test file even though execution failed
+            test_files[test_path] = test_code
             _set_task_status(task_list, test_task["task_id"], "failed", error=error_msg)
             code_errors.append(
                 CodeError(
@@ -269,8 +271,9 @@ def test_orchestrator_node(state: AgentState) -> dict[str, Any]:
             fix_attempts += 1
 
         # --- Record final outcome ---
+        # Always preserve the generated test file regardless of pass/fail
+        test_files[test_path] = test_code
         if test_result["passed"]:
-            test_files[test_path] = test_code
             _set_task_status(task_list, test_task["task_id"], "done")
             logger.info("test_gen OK: %s (tests passed)", test_path)
         else:

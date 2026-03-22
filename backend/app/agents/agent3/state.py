@@ -27,7 +27,7 @@ class Connection(TypedDict):
 
 class FileManifestEntry(TypedDict):
     path: str
-    fill_strategy: str   # "template" | "llm_handler" | "llm_cdk" | "llm_frontend" | "llm_java" | "llm_test"
+    fill_strategy: str   # "template" | "llm_handler" | "llm_infra" | "llm_frontend" | "llm_java" | "llm_test"
     language: str
     service_id: str | None
     required: bool

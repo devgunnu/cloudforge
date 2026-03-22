@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
     ollama_base_url: str = "http://localhost:11434"
-    qwen_model: str = "qwen3.5:latest"
+    qwen_model: str = "gemma3:4b"
     llm_temperature: float = 0.2
     llm_timeout_seconds: int = 90
     enable_web_search: bool = True
@@ -19,12 +19,15 @@ class Settings(BaseSettings):
     # Set arch_model_type="anthropic" and ANTHROPIC_API_KEY in .env for Claude.
     # Defaults to local Ollama so the server starts without any extra API keys.
     arch_model_type: str = "ollama"
-    arch_model_name: str = "llama3.1:8b"
+    arch_model_name: str = "gemma3:4b"
+
+    # Anthropic API key (used when arch_model_type="anthropic")
+    anthropic_api_key: str = ""
 
     # Agent 3 — Code Generator LLM (Groq)
     groq_api_key: str = ""
-    agent3_model: str = "llama-3.1-8b-instant"
-    agent3_fast_model: str = "llama-3.1-8b-instant"
+    agent3_model: str = "gemma3:4b"
+    agent3_fast_model: str = "gemma3:4b"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

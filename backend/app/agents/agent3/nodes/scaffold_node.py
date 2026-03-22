@@ -11,25 +11,18 @@ from app.agents.agent3.config import (
     LAMBDA_SERVICE_TYPES,
     RUNTIME_FEATURE_REQUIREMENTS,
     SERVICE_LANGUAGE_MAP,
-    STACK_ASSIGNMENT,
 )
 from app.agents.agent3.scaffold.templates import (
     render_amplify_yml,
-    render_application_stage_ts,
-    render_bin_app_ts,
     render_buildspec_yaml,
-    render_cdk_json,
     render_frontend_index_html,
     render_frontend_main_tsx,
     render_frontend_package_json,
     render_frontend_tsconfig,
     render_gitignore,
-    render_infra_package_json,
-    render_infra_tsconfig,
     render_kinesis_dockerfile,
     render_lambda_requirements_stub,
     render_layers_requirements,
-    render_naming_utils_ts,
     render_root_env_example,
     render_vite_config,
 )
@@ -85,22 +78,12 @@ def scaffold_node(state: AgentState) -> dict[str, Any]:
     )
 
     # Determine topology characteristics
-    stacks_needed: set[str] = {
-        STACK_ASSIGNMENT[svc["service_type"]]
-        for svc in services
-        if svc["service_type"] in STACK_ASSIGNMENT
-    }
     has_frontend = any(
         svc["service_type"] in AMPLIFY_TRIGGER_SERVICE_TYPES for svc in services
     )
     has_rds = any(svc["service_type"] == "rds" for svc in services)
     lambda_services = [s for s in services if s["service_type"] in LAMBDA_SERVICE_TYPES]
     kinesis_services = [s for s in services if s["service_type"] == "kinesis"]
-
-    # PascalCase project name for TypeScript class/identifier usage
-    project_pascal = "".join(
-        w.capitalize() for w in project_name.replace("-", "_").split("_")
-    )
 
     scaffold_files: dict[str, str] = {}
     manifest: list[FileManifestEntry] = []
@@ -145,55 +128,8 @@ def scaffold_node(state: AgentState) -> dict[str, Any]:
         )
 
     # -----------------------------------------------------------------------
-    # Infrastructure templates
+    # Root scaffold templates
     # -----------------------------------------------------------------------
-    stacks_list = sorted(stacks_needed)
-
-    add_template(
-        "infrastructure/cdk.json",
-        render_cdk_json(project_name),
-        "CDK v2 config",
-    )
-    add_template(
-        "infrastructure/package.json",
-        render_infra_package_json(project_name),
-        "CDK package.json",
-        language="typescript",
-    )
-    add_template(
-        "infrastructure/tsconfig.json",
-        render_infra_tsconfig(),
-        "CDK tsconfig",
-        language="typescript",
-    )
-    add_template(
-        "infrastructure/bin/app.ts",
-        render_bin_app_ts(project_pascal, stacks_list),
-        "CDK App entry",
-        language="typescript",
-    )
-    add_template(
-        "infrastructure/lib/stages/application-stage.ts",
-        render_application_stage_ts(stacks_list),
-        "CDK Stage",
-        language="typescript",
-    )
-    add_template(
-        "infrastructure/lib/utils/naming.ts",
-        render_naming_utils_ts(),
-        "CDK naming utils",
-        language="typescript",
-    )
-    add_template(
-        "infrastructure/parameters/dev.json",
-        '{"env": "dev", "region": "us-east-1"}',
-        "Dev params",
-    )
-    add_template(
-        "infrastructure/parameters/prod.json",
-        '{"env": "prod", "region": "us-east-1"}',
-        "Prod params",
-    )
     add_template(".gitignore", render_gitignore("root"), "Root gitignore")
     add_template("buildspec.yaml", render_buildspec_yaml(), "CodeBuild spec")
     add_template(
@@ -202,17 +138,26 @@ def scaffold_node(state: AgentState) -> dict[str, Any]:
         "Env example",
     )
 
-    # LLM slots for CDK stacks (one per stack)
-    for stack in stacks_list:
-        stack_path = f"infrastructure/lib/stacks/{stack}.ts"
-        add_llm_slot(
-            stack_path,
-            "llm_cdk",
-            "typescript",
-            None,
-            required=True,
-            description=f"CDK {stack} stack",
-        )
+    # LLM slots for infrastructure artifacts
+    add_llm_slot(
+        "docker-compose.yml",
+        "llm_infra",
+        "yaml",
+        None,
+        required=False,
+        description="Local development docker-compose",
+    )
+    for svc in services:
+        if svc["service_type"] in ("ecs", "fargate"):
+            sid = svc["id"]
+            add_llm_slot(
+                f"services/{sid}/Dockerfile",
+                "llm_infra",
+                "dockerfile",
+                sid,
+                required=False,
+                description=f"{sid} Dockerfile",
+            )
 
     # -----------------------------------------------------------------------
     # Lambda service files
@@ -337,11 +282,10 @@ def scaffold_node(state: AgentState) -> dict[str, Any]:
     llm_slot_count = len(manifest) - template_count
 
     logger.info(
-        "scaffold_node: project=%s, %d template files, %d llm slots, stacks=%s, frontend=%s",
+        "scaffold_node: project=%s, %d template files, %d llm slots, frontend=%s",
         project_name,
         template_count,
         llm_slot_count,
-        stacks_list,
         has_frontend,
     )
 

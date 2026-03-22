@@ -27,6 +27,7 @@ from app.agents.agent3.subgraphs.tf_validation_loop import (
     compile_tf_validation_subgraph,
 )
 from app.agents.agent3.tools.task_tools import (
+    build_architecture_summary,
     describe_service,
     extract_tf_context_for_service,
 )
@@ -112,6 +113,9 @@ def _build_arch_ctx_json(state: AgentState, service_id: str) -> str:
     outgoing = [c for c in connections if c["source"] == service_id]
     incoming = [c for c in connections if c["target"] == service_id]
 
+    # Build a lookup so we can enrich connections with the peer service type
+    svc_type_by_id: dict[str, str] = {s["id"]: s["service_type"] for s in services}
+
     return json.dumps(
         {
             "service_id": service_id,
@@ -119,8 +123,22 @@ def _build_arch_ctx_json(state: AgentState, service_id: str) -> str:
             "label": svc["label"],
             "config": svc["config"],
             "connections": describe_service(svc, connections),
-            "incoming": [{"from": c["source"], "via": c["relationship"]} for c in incoming],
-            "outgoing": [{"to": c["target"], "via": c["relationship"]} for c in outgoing],
+            "incoming": [
+                {
+                    "from": c["source"],
+                    "via": c["relationship"],
+                    "service_type": svc_type_by_id.get(c["source"], "unknown"),
+                }
+                for c in incoming
+            ],
+            "outgoing": [
+                {
+                    "to": c["target"],
+                    "via": c["relationship"],
+                    "service_type": svc_type_by_id.get(c["target"], "unknown"),
+                }
+                for c in outgoing
+            ],
         },
         indent=2,
     )
@@ -129,6 +147,8 @@ def _build_arch_ctx_json(state: AgentState, service_id: str) -> str:
 def _build_worker_state(state: AgentState, group: TaskGroup) -> CodegenWorkerState:
     """Construct a CodegenWorkerState for a single task group."""
     tf_files = state.get("tf_files") or {}
+    services = state.get("services") or []
+    connections = state.get("connections") or []
 
     tf_context_map: dict[str, str] = {}
     arch_context_map: dict[str, str] = {}
@@ -136,13 +156,19 @@ def _build_worker_state(state: AgentState, group: TaskGroup) -> CodegenWorkerSta
         tf_context_map[sid] = extract_tf_context_for_service(tf_files, sid)
         arch_context_map[sid] = _build_arch_ctx_json(state, sid)
 
+    # Combine the manager's plan summary with the full topology so each worker
+    # has complete context (all service types and connections) when generating code.
+    arch_summary = build_architecture_summary(services, connections)
+    plan_summary = state.get("manager_plan_summary") or ""
+    architecture_overview = f"{arch_summary}\n\n{plan_summary}".strip() if plan_summary else arch_summary
+
     return CodegenWorkerState(
         group_id=group["group_id"],
         tasks=group["tasks"],
         api_contracts=group["api_contracts"],
         tf_context_map=tf_context_map,
         architecture_context_map=arch_context_map,
-        architecture_overview=state.get("manager_plan_summary") or "",
+        architecture_overview=architecture_overview,
         code_files={},
         code_errors=[],
         completed_task_list=[],
@@ -210,7 +236,7 @@ def _route_after_manager(
 
         # Fan-out one infra_codegen_worker per CDK stack file (from file_manifest)
         for entry in file_manifest:
-            if entry["fill_strategy"] == "llm_cdk":
+            if entry["fill_strategy"] == "llm_infra":
                 sends.append(
                     Send("infra_codegen_worker", {
                         "infra_task": {

@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import threading
 
-from langchain_groq import ChatGroq
+# from langchain_groq import ChatGroq
+from langchain_ollama import ChatOllama
 
 from app.config import settings
 
@@ -16,7 +17,7 @@ def get_llm(model: str | None = None, temperature: float = 0.0) -> ChatGroq:
     if key not in _clients:
         with _lock:
             if key not in _clients:
-                _clients[key] = ChatGroq(
+                _clients[key] = ChatOllama(
                     model=resolved_model,
                     api_key=settings.groq_api_key,
                     temperature=temperature,
@@ -25,9 +26,9 @@ def get_llm(model: str | None = None, temperature: float = 0.0) -> ChatGroq:
     return _clients[key]
 
 
-def get_default_llm() -> ChatGroq:
+def get_default_llm() -> ChatOllama:
     return get_llm(settings.agent3_model, 0.0)
 
 
-def get_fast_llm() -> ChatGroq:
+def get_fast_llm() -> ChatOllama:
     return get_llm(settings.agent3_fast_model, 0.0)
