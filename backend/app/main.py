@@ -3,6 +3,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import settings
 from app.db.mongo import connect_mongo, disconnect_mongo
@@ -15,11 +19,30 @@ from app.routers.prd import router as prd_router
 
 logger = logging.getLogger(__name__)
 
+limiter = Limiter(key_func=get_remote_address)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await connect_mongo()
     logger.info("MongoDB connected")
+
+    # Validate critical secrets — fail fast rather than serve broken crypto
+    if not settings.jwt_secret_key or settings.jwt_secret_key == "changeme":
+        raise RuntimeError(
+            "JWT_SECRET_KEY is not set or is using the insecure default. "
+            "Set a strong secret in your .env file."
+        )
+    if not settings.fernet_key:
+        raise RuntimeError(
+            "FERNET_KEY is not set. "
+            "Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+        )
+    try:
+        from cryptography.fernet import Fernet
+        Fernet(settings.fernet_key.encode())
+    except Exception as exc:
+        raise RuntimeError(f"FERNET_KEY is invalid: {exc}") from exc
 
     try:
         from app.agents.architecture_planner.kg_traversal_agent import init_kuzu
@@ -44,6 +67,10 @@ app = FastAPI(
     debug=settings.debug,
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
