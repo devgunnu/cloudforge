@@ -52,7 +52,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prd-file", type=str, help="Path to PRD file")
     parser.add_argument("--cloud", type=str, choices=["AWS", "GCP", "Azure"], help="Cloud provider")
     parser.add_argument("--model-name", type=str, default=None, help="Override default model name")
-    parser.add_argument("--model-name", type=str, default=None, help="Override default model name")
     parser.add_argument(
         "--terraform-mcp-cmd",
         type=str,
@@ -133,18 +132,13 @@ def collect_inputs(args: argparse.Namespace) -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 _NODE_LABELS: dict[str, str] = {
-    "info_gathering":    "Checking if provided information is sufficient...",
-    "info_check":        "  ↳ Analysing requirements...",
-    "question_suggester":"  ↳ Generating clarifying questions...",
-    "query":             "Researching architecture patterns...",
-    "query_research":    "  ↳ Synthesising best-practice patterns...",
-    "query_eval":        "  ↳ Evaluating research quality...",
-    "service_discovery": "Discovering platform services...",
-    "arch_review":       "Designing architecture (iteration {iter})...",
-    "architecture":      "  ↳ Generating architecture diagram & documents...",
-    "compliance":        "  ↳ Checking PRD / NFR compliance...",
-    "eval":              "  ↳ Evaluating architecture (score: {score}/10)...",
-    "accept":            "Presenting architecture for review...",
+    "architecture":         "Generating architecture diagram & documents (iteration {iter})...",
+    "service_discovery":    "Discovering platform services...",
+    "arch_simulator":       "  ↳ Simulating load & capacity...",
+    "resilience_simulator": "  ↳ Analysing resilience & failure modes...",
+    "compliance":           "  ↳ Checking PRD / NFR compliance...",
+    "arch_test":            "  ↳ Running structural architecture tests...",
+    "accept":               "Presenting architecture for review...",
     "present_architecture": "  ↳ Awaiting your decision...",
 }
 
@@ -157,46 +151,7 @@ def print_progress(event: dict, state: dict) -> None:
         label = _NODE_LABELS.get(node_name, f"Running {node_name}...")
         if "{iter}" in label:
             label = label.format(iter=state.get("arch_iteration_count", "?"))
-        if "{score}" in label:
-            label = label.format(score=f"{state.get('eval_score', 0.0):.1f}")
         print(f"[{ts}] {label}")
-
-
-# ---------------------------------------------------------------------------
-# MCQ interrupt handler
-# ---------------------------------------------------------------------------
-
-
-def handle_mcq_interrupt(questions: list[dict]) -> list[str]:
-    """Present MCQ questions in the terminal and collect user answers."""
-    print("\n" + "─" * 66)
-    print("  Additional information needed to design your architecture:")
-    print("─" * 66)
-
-    answers: list[str] = []
-    for i, q in enumerate(questions, 1):
-        print(f"\nQ{i}. {q['question']}")
-        print(f"     Why: {q['context']}")
-        for j, choice in enumerate(q["choices"], 1):
-            print(f"     {j}. {choice}")
-        custom_num = len(q["choices"]) + 1
-        print(f"     {custom_num}. Custom answer")
-
-        while True:
-            sel = input(f"     Select [1–{custom_num}]: ").strip()
-            if sel.isdigit():
-                idx = int(sel)
-                if 1 <= idx <= len(q["choices"]):
-                    answers.append(q["choices"][idx - 1])
-                    break
-                elif idx == custom_num:
-                    custom = input("     Your answer: ").strip()
-                    answers.append(custom)
-                    break
-            print(f"     Please enter a number between 1 and {custom_num}.")
-
-    print("─" * 66 + "\n")
-    return answers
 
 
 # ---------------------------------------------------------------------------
@@ -280,8 +235,8 @@ def save_outputs(final_state: dict, output_dir: Path) -> None:
 def main() -> None:
     args = parse_args()
 
-    # Validate API key early for Anthropic
-    if args.model == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
+    # Validate API key early
+    if not os.environ.get("ANTHROPIC_API_KEY"):
         print(
             "Error: ANTHROPIC_API_KEY environment variable is not set.\n"
             "Set ANTHROPIC_API_KEY before running.",
@@ -317,12 +272,7 @@ def main() -> None:
                 # Take the first interrupt
                 interrupt_data = interrupts[0].value if hasattr(interrupts[0], "value") else interrupts[0]
 
-                if "questions" in interrupt_data:
-                    # MCQ clarifying questions
-                    answers = handle_mcq_interrupt(interrupt_data["questions"])
-                    from langgraph.types import Command as LGCommand
-                    current_input = LGCommand(resume=answers)
-                elif "summary" in interrupt_data:
+                if "summary" in interrupt_data:
                     # Architecture review
                     response = handle_accept_interrupt(
                         interrupt_data["summary"],
@@ -357,9 +307,9 @@ def main() -> None:
     print("Architecture planning complete!")
 
     # Summary
-    score = final_state.get("eval_score", 0.0)
-    if score:
-        print(f"Final evaluation score: {score:.1f}/10")
+    arch_test_passed = final_state.get("arch_test_passed", False)
+    violations_count = len(final_state.get("arch_test_violations") or [])
+    print(f"Architecture tests: {'PASSED' if arch_test_passed else 'FAILED'} ({violations_count} violation(s))")
     if warn := final_state.get("error_message"):
         print(f"\nWarning: {warn}")
 

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import asyncio
 import json
-import os
 import logging
 
 from langchain_core.messages import HumanMessage
@@ -14,7 +12,8 @@ from app.agents.architecture_planner.state import (
 )
 from app.agents.architecture_planner.prompts import render_prompt
 from app.agents.architecture_planner.llm_utils import API_ERROR_TYPES
-from app.agents.architecture_planner.cost_fetchers import fetch_cost_data
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["make_compliance_node"]
 
@@ -28,6 +27,7 @@ def make_compliance_node(llm):
     """Factory that returns a compliance_node bound to the provided LLM."""
 
     def compliance_node(state: ArchitecturePlannerState) -> dict:
+        logger.info("[compliance] starting")
         if state["architecture_diagram"] is None:
             return {
                 "compliance_gaps": [],
@@ -36,18 +36,8 @@ def make_compliance_node(llm):
                 "error_message": "Cannot run compliance check: architecture diagram is missing.",
             }
 
-        # Real-time cloud pricing enrichment (skips silently on failure or unsupported provider)
         cost_data: str | None = None
-        if state["architecture_diagram"] is not None:
-            services = [node.service for node in state["architecture_diagram"].nodes]
-            try:
-                cost_data = asyncio.run(fetch_cost_data(
-                    cloud_provider=state["cloud_provider"],
-                    services=services,
-                    region=os.environ.get("AWS_REGION", "us-east-1"),
-                ))
-            except Exception:
-                cost_data = None  # never block the compliance check
+        # Cost data enrichment removed — use compliance MCP when configured
 
         architecture_diagram_json = state["architecture_diagram"].model_dump_json(by_alias=True)
 
@@ -98,6 +88,8 @@ def make_compliance_node(llm):
                     "error_message": f"Compliance check failed: {str(e2)}",
                 }
 
+        critical = sum(1 for g in result.gaps if getattr(g, "severity", None) == "CRITICAL")
+        logger.info("[compliance] done — gaps=%d critical=%d passed=%s", len(result.gaps), critical, result.passed)
         return {
             "compliance_gaps": result.gaps,
             "compliance_passed": result.passed,

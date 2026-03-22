@@ -491,10 +491,16 @@ export default function BuildPanel() {
     openFile,
     closeFile,
     currentProjectId,
+    updateFileContent,
+    markDirty,
+    markClean,
+    saveFile,
+    dirtyFiles,
   } = useForgeStore();
 
   const [activeView, setActiveView] = useState<BuildView>('files');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const agentRan = useRef(false);
   const activityFilesRef = useRef<Array<{ id: string; name: string; status: 'new' | 'modified' | 'pending' }>>([]);
 
@@ -528,6 +534,19 @@ export default function BuildPanel() {
     setActiveView('files');
     setSelectedNodeId(null);
   }, [openFile]);
+
+  const handleSave = useCallback(async () => {
+    if (!activeFile || !currentProjectId) return;
+    setSaveStatus('saving');
+    const ok = await saveFile(currentProjectId, activeFile);
+    if (ok) {
+      markClean(activeFile);
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    } else {
+      setSaveStatus('idle');
+    }
+  }, [activeFile, currentProjectId, saveFile, markClean]);
 
   useEffect(() => {
     if (agentRan.current) return;
@@ -578,6 +597,9 @@ export default function BuildPanel() {
     }, currentProjectId ?? undefined).then(() => {
       setStageStatus('build', 'done');
       setBuildProgress(buildTotal, buildTotal);
+      // Auto-open all generated files so the Files view is populated
+      const allFiles = Object.values(useForgeStore.getState().generatedFiles);
+      allFiles.forEach((f) => openFile(f.id));
       addChatMessage('build', {
         id: `agent3-done-${Date.now()}`,
         role: 'agent',
@@ -740,9 +762,26 @@ export default function BuildPanel() {
                       fontSize: 12,
                       color: isActive ? 'var(--lp-text-primary)' : 'var(--lp-text-secondary)',
                       whiteSpace: 'nowrap',
+                      display: 'flex', alignItems: 'center', gap: 4,
                     }}>
                       {file.name}
+                      {dirtyFiles[id] && (
+                        <span
+                          title="Unsaved changes"
+                          style={{
+                            display: 'inline-block', width: 6, height: 6,
+                            borderRadius: '50%', background: '#f59e0b',
+                            flexShrink: 0,
+                          }}
+                        />
+                      )}
                     </span>
+                    {dirtyFiles[id] && (
+                      <span
+                        aria-label="Unsaved changes"
+                        style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--lp-accent)', flexShrink: 0 }}
+                      />
+                    )}
                     <button
                       type="button"
                       aria-label={`Close ${file.name}`}
@@ -828,10 +867,27 @@ export default function BuildPanel() {
                 >
                   ↓ Download
                 </button>
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saveStatus === 'saving'}
+                  aria-label={`Save ${activeFileData.name}`}
+                  style={{
+                    background: dirtyFiles[activeFile!] ? 'var(--lp-accent-dim)' : 'var(--lp-elevated)',
+                    border: `0.5px solid ${dirtyFiles[activeFile!] ? 'rgba(45,212,191,0.4)' : 'var(--lp-border-hover)'}`,
+                    borderRadius: 6, padding: '4px 10px',
+                    fontFamily: 'var(--font-inter), system-ui, sans-serif',
+                    fontSize: 11,
+                    color: dirtyFiles[activeFile!] ? 'var(--lp-accent)' : 'var(--lp-text-secondary)',
+                    cursor: saveStatus === 'saving' ? 'wait' : 'pointer',
+                  }}
+                >
+                  {saveStatus === 'saving' ? '…' : saveStatus === 'saved' ? '✓ Saved' : '↑ Save'}
+                </button>
               </div>
 
-              {/* Code view */}
-              <div style={{ flex: 1, overflow: 'auto', display: 'flex', fontFamily: 'var(--font-jetbrains-mono), monospace' }}>
+              {/* Code editor — editable textarea with syntax font */}
+              <div style={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
                 {/* Line numbers */}
                 <div
                   style={{
@@ -839,6 +895,7 @@ export default function BuildPanel() {
                     background: 'var(--lp-surface)',
                     borderRight: '0.5px solid var(--lp-border)',
                     padding: '12px 0',
+                    overflowY: 'hidden',
                   }}
                   aria-hidden="true"
                 >
@@ -856,24 +913,35 @@ export default function BuildPanel() {
                     </span>
                   ))}
                 </div>
-                {/* Code column */}
-                <div style={{ flex: 1, overflow: 'auto', padding: '12px 0' }}>
-                  {activeFileData.lines.map((line, idx) => (
-                    <div
-                      key={idx}
-                      style={{
-                        display: 'flex', fontSize: 12, lineHeight: 1.6,
-                        fontFamily: 'var(--font-jetbrains-mono), monospace',
-                        background: 'transparent',
-                        borderLeft: '2px solid transparent',
-                        paddingLeft: 16, paddingRight: 48,
-                        whiteSpace: 'pre',
-                      }}
-                    >
-                      {tokenizeLine(line.content, activeFileData.lang)}
-                    </div>
-                  ))}
-                </div>
+                {/* Editable textarea */}
+                <textarea
+                  value={activeFileData.lines.map((l) => l.content).join('\n')}
+                  onChange={(e) => {
+                    updateFileContent(activeFile!, e.target.value);
+                    markDirty(activeFile!);
+                  }}
+                  onKeyDown={(e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+                      e.preventDefault();
+                      handleSave();
+                    }
+                  }}
+                  spellCheck={false}
+                  aria-label={`Edit ${activeFileData.name}`}
+                  style={{
+                    flex: 1,
+                    resize: 'none',
+                    border: 'none',
+                    outline: 'none',
+                    background: 'transparent',
+                    color: 'var(--lp-text-primary)',
+                    fontFamily: 'var(--font-jetbrains-mono), monospace',
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    padding: '12px 16px',
+                    overflowY: 'auto',
+                  }}
+                />
               </div>
             </div>
           )}
