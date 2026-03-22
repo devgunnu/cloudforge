@@ -174,6 +174,15 @@ def _build_tools(ctx: _OrchestratorCtx, state: AgentState, code_subgraph: Any) -
         Requires generate_service_code to be called first for this service.
         Returns the generated test file path on success, or an error description.
         """
+        # Enforce ordering: code must exist before tests can be generated
+        code_task = ctx.find_task(service_id, "code_gen")
+        if code_task is not None and code_task["status"] != "done":
+            return (
+                f"ERROR: Cannot generate tests for '{service_id}' — "
+                f"code_gen task is '{code_task['status']}'. "
+                "Call generate_service_code first."
+            )
+
         ext = EXT_MAP.get(language, language)
         code_path = f"services/{service_id}/handler.{ext}"
         source_code = ctx.code_files.get(code_path, "")
@@ -277,7 +286,8 @@ def make_orchestrator_node(compiled_code_subgraph: Any):
         # `prompt` is the current API (state_modifier is deprecated in langgraph-prebuilt 1.x)
         agent = create_react_agent(get_default_llm(), tools, prompt=system_prompt)
 
-        # Build initial message if this is the first orchestrator iteration
+        # Build initial message if this is the first orchestrator iteration.
+        # Plain-language description avoids confusing the LLM about tool call syntax.
         prior_messages = list(state.get("orchestrator_messages") or [])
         if not prior_messages:
             pending_count = sum(1 for t in ctx.task_list if t["status"] == "pending")
@@ -285,21 +295,38 @@ def make_orchestrator_node(compiled_code_subgraph: Any):
                 HumanMessage(
                     content=(
                         f"Start generating code. There are {pending_count} pending tasks. "
-                        "Call get_pending_tasks() first to see the full task list, "
-                        "then work through them systematically."
+                        "Use the get_pending_tasks tool first to see the full task list, "
+                        "then work through each service systematically."
                     )
                 )
             ]
 
-        # recursion_limit guards against the ReAct agent looping indefinitely
+        # Compute a recursion limit that scales with actual task count.
+        # Each task needs ~RECURSION_STEPS_PER_TASK super-steps (LLM call + tool call per step).
+        # We take the max of the user-configured floor and the task-count-based estimate.
         max_iter = state.get("orchestrator_max_iterations", 10)
-        result = agent.invoke(
-            {"messages": prior_messages},
-            config={"recursion_limit": max_iter * RECURSION_STEPS_PER_TASK},
+        num_tasks = len(ctx.task_list)
+        recursion_limit = max(
+            max_iter * RECURSION_STEPS_PER_TASK,        # user-configured floor
+            num_tasks * RECURSION_STEPS_PER_TASK + 10,  # task-count-based estimate
         )
 
-        return {
-            "orchestrator_messages": result["messages"],
+        agent_messages = prior_messages
+        agent_error: str | None = None
+        try:
+            agent_result = agent.invoke(
+                {"messages": prior_messages},
+                config={"recursion_limit": recursion_limit},
+            )
+            agent_messages = agent_result["messages"]
+        except Exception as e:
+            # The agent can fail due to model tool-call format errors or transient API
+            # issues. We preserve whatever partial state was accumulated in ctx and
+            # surface the error so the pipeline can still assemble partial artifacts.
+            agent_error = str(e)
+
+        partial = {
+            "orchestrator_messages": agent_messages,
             "code_files": ctx.code_files,
             "test_files": ctx.test_files,
             "task_list": ctx.task_list,
@@ -307,5 +334,8 @@ def make_orchestrator_node(compiled_code_subgraph: Any):
             "orchestrator_iterations": state.get("orchestrator_iterations", 0) + 1,
             "current_phase": "assembly",
         }
+        if agent_error:
+            partial["pipeline_errors"] = [f"Orchestrator agent error: {agent_error}"]
+        return partial
 
     return orchestrator_node

@@ -90,6 +90,10 @@ def _route_after_tf_validation(
     if state.get("current_phase") == "error":
         return "error_handler"
     if state.get("tf_validated"):
+        # Skip orchestrator entirely for infra-only architectures with no code tasks
+        task_list = state.get("task_list") or []
+        if not task_list:
+            return "assembler"
         return "orchestrator"
     # TF never validated and no human flag means something odd — assemble partial
     return "assembler"

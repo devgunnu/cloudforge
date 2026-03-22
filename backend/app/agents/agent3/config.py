@@ -4,8 +4,8 @@ from __future__ import annotations
 # LLM
 # ---------------------------------------------------------------------------
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
-FAST_MODEL = "claude-haiku-4-5-20251001"  # used for lighter tasks like code fixing
+DEFAULT_MODEL = "llama-3.1-8b-instant"  # Groq: strong model with tool-use support
+FAST_MODEL = "llama-3.1-8b-instant"  # Groq: fast model for lighter tasks like code fixing
 
 # ---------------------------------------------------------------------------
 # Retry / iteration limits
@@ -72,7 +72,7 @@ EXT_MAP: dict[str, str] = {
 # ReAct agent recursion limit multiplier (steps per task)
 # ---------------------------------------------------------------------------
 
-RECURSION_STEPS_PER_TASK = 3
+RECURSION_STEPS_PER_TASK = 6  # ~2 super-steps per tool call × ~3 tool calls per task
 
 # ---------------------------------------------------------------------------
 # Terraform file names that are always generated

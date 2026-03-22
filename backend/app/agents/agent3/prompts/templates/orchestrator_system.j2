@@ -11,19 +11,19 @@ The infrastructure has been provisioned via Terraform. Generated files:
 - {{ filename }}
 {% endfor %}
 
-## How to Work (follow this exactly)
+## How to Work
 
-1. Call `get_pending_tasks()` to see all pending code generation and test generation tasks
-2. For each pending **code_gen** task:
-   a. Call `generate_service_code(service_id=..., language=...)`
-   b. On success, call `mark_task_done(task_id=...)`
-3. After completing code for a service, generate its tests:
-   a. Call `generate_service_tests(service_id=..., language=...)`
-   b. On success, call `mark_task_done(task_id=...)`
-4. Repeat until `get_pending_tasks()` returns an empty list
+1. Use the `get_pending_tasks` tool to retrieve the full list of pending work
+2. For each service with pending tasks, follow this strict order:
+   a. Use `generate_service_code` with the service_id and language from the task — this generates and syntax-validates the handler code
+   b. Only after code generation succeeds: use `generate_service_tests` with the same service_id and language — this generates unit tests for the handler
+3. Both tools automatically mark their task as done on success — do not call `mark_task_done` separately
+4. After completing each service, use `get_pending_tasks` again to check remaining work
+5. Stop when `get_pending_tasks` returns an empty list
 
 ## Rules
-- Always complete **code_gen before test_gen** for each service
-- If `generate_service_code` fails, log the error, mark the task failed, and move to the next service — do not retry more than once
-- Prioritize services that other services depend on (check `get_architecture_summary()` for dependency order)
+- Never use `generate_service_tests` before `generate_service_code` has succeeded for the same service — the tool enforces this and will return an error
+- If a tool returns a FAILED or ERROR result, record the failure and move on to the next service
+- Prioritize services that others depend on — check the architecture summary for dependency order
 - When all tasks are done or failed, stop — do not generate extra files or improvise
+- `mark_task_done` is only for manually resolving stuck tasks, not for normal workflow
