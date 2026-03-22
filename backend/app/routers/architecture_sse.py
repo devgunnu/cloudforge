@@ -91,6 +91,7 @@ async def _stream_arch_start(
     payload: ArchSSEStartRequest,
     user: dict,
     kuzu_conn,
+    request: Request,
 ) -> AsyncGenerator[str, None]:
     # 1. Fetch PRD and gate on accepted status
     prd_conv = await prd_conversations_col().find_one({"project_id": ObjectId(project_id)})
@@ -135,6 +136,10 @@ async def _stream_arch_start(
     seen_nodes: set[str] = set()
     try:
         async for state_snapshot in graph.astream(initial_state, config, stream_mode="values"):
+            if await request.is_disconnected():
+                logger.info("Client disconnected, stopping architecture stream")
+                return
+
             current_node = state_snapshot.get("current_node", "")
 
             # Check for interrupt
@@ -174,8 +179,8 @@ async def _stream_arch_start(
                 yield _sse(event)
 
     except Exception as exc:
-        logger.error("arch_sse start error [%s]: %s", session_id, exc, exc_info=True)
-        yield _sse({"type": "error", "message": str(exc)})
+        logger.exception("Workflow error in arch stream")
+        yield _sse({"type": "error", "message": "An internal error occurred. Please try again."})
         return
 
     # 6. Graph completed — finalise
@@ -220,6 +225,7 @@ async def _stream_arch_resume(
     session_id: str,
     resume_value,
     kuzu_conn,
+    request: Request,
 ) -> AsyncGenerator[str, None]:
     config = {"configurable": {"thread_id": session_id}}
     graph = _get_arch_graph(kuzu_conn)
@@ -229,6 +235,10 @@ async def _stream_arch_resume(
         async for state_snapshot in graph.astream(
             Command(resume=resume_value), config, stream_mode="values"
         ):
+            if await request.is_disconnected():
+                logger.info("Client disconnected, stopping architecture stream")
+                return
+
             current_node = state_snapshot.get("current_node", "")
 
             try:
@@ -266,8 +276,8 @@ async def _stream_arch_resume(
                 yield _sse(event)
 
     except Exception as exc:
-        logger.error("arch_sse resume error [%s]: %s", session_id, exc, exc_info=True)
-        yield _sse({"type": "error", "message": str(exc)})
+        logger.exception("Workflow error in arch stream")
+        yield _sse({"type": "error", "message": "An internal error occurred. Please try again."})
         return
 
     try:
@@ -323,7 +333,7 @@ async def start_arch_v2(
     kuzu_conn = getattr(request.app.state, "kuzu_conn", None)
 
     return StreamingResponse(
-        _stream_arch_start(project_id, project, payload, user, kuzu_conn),
+        _stream_arch_start(project_id, project, payload, user, kuzu_conn, request),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -336,6 +346,12 @@ async def respond_arch_v2(
     request: Request,
     user: dict = Depends(get_current_user),
 ):
+    project = await projects_col().find_one({"_id": ObjectId(project_id)})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if str(project.get("owner_id")) != str(user["_id"]):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     arch_doc = await architectures_col().find_one(
         {"project_id": ObjectId(project_id)},
         sort=[("created_at", -1)],
@@ -347,7 +363,7 @@ async def respond_arch_v2(
     kuzu_conn = getattr(request.app.state, "kuzu_conn", None)
 
     return StreamingResponse(
-        _stream_arch_resume(session_id, payload.answers, kuzu_conn),
+        _stream_arch_resume(session_id, payload.answers, kuzu_conn, request),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
@@ -360,6 +376,12 @@ async def review_arch_v2(
     request: Request,
     user: dict = Depends(get_current_user),
 ):
+    project = await projects_col().find_one({"_id": ObjectId(project_id)})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if str(project.get("owner_id")) != str(user["_id"]):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     arch_doc = await architectures_col().find_one(
         {"project_id": ObjectId(project_id)},
         sort=[("created_at", -1)],
@@ -373,7 +395,7 @@ async def review_arch_v2(
     resume_value = {"accepted": payload.accepted, "changes": payload.changes}
 
     return StreamingResponse(
-        _stream_arch_resume(session_id, resume_value, kuzu_conn),
+        _stream_arch_resume(session_id, resume_value, kuzu_conn, request),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

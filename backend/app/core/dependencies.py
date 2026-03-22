@@ -32,7 +32,7 @@ async def require_project_owner(project_id: str, user: dict = Depends(get_curren
     project = await projects_col().find_one({"_id": ObjectId(project_id)})
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    if project.get("owner_id") != str(user["_id"]):
+    if str(project.get("owner_id")) != str(user["_id"]):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You do not have permission to access this project",
