@@ -189,6 +189,9 @@ export async function runAgent2(
         if (event.step !== undefined) {
           onStep?.(event.step - 1, 7);
         }
+        if (event.type === 'error') {
+          throw new Error((event.message as string) || 'Architecture generation failed');
+        }
         if (event.node === 'complete' && event.architecture_diagram) {
           const diagram = event.architecture_diagram;
           nodes = (diagram.nodes || []).map((n: Record<string, unknown>) => ({

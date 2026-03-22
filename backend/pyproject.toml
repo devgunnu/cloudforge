@@ -37,6 +37,7 @@ dependencies = [
     "boto3",
     "slowapi>=0.1.9",
     "json-repair>=0.30.0",
+    "pandas>=3.0.1",
 ]
 
 [project.optional-dependencies]

@@ -49,12 +49,13 @@ _NODE_STEPS = {
 _arch_graph_v2 = None
 
 
-def _get_arch_graph(kuzu_conn=None):  # noqa: ARG001 — kuzu_conn reserved for future use
+def _get_arch_graph(kuzu_conn=None):
     global _arch_graph_v2
     if _arch_graph_v2 is None:
         _arch_graph_v2 = create_graph(
             graph_json_path=_GRAPH_JSON,
             community_summaries_path=_SUMMARIES_JSON,
+            kuzu_conn=kuzu_conn,
         )
     return _arch_graph_v2
 
@@ -104,7 +105,7 @@ async def _stream_arch_start(
     # 3. Build graph and initial state
     graph = _get_arch_graph(kuzu_conn)
     cloud_provider = _PROVIDER_MAP.get(
-        project.get("cloud_provider", "aws").lower(), "AWS"
+        (project.get("cloud_provider") or "aws").lower(), "AWS"
     )
     initial_state = make_initial_state(
         budget=payload.budget or "",
