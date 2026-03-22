@@ -4,9 +4,11 @@ import logging
 from urllib.parse import urlparse
 
 from app.agents.agent1 import run_until_interrupt
+from app.agents.agent1.llm import supported_llm_providers
 from app.agents.agent1.nodes import acceptance_node
 from app.agents.agent1.state import AgentState
 from app.agents.agent1.tools import trusted_doc_domains
+from app.config import settings
 
 
 logger = logging.getLogger(__name__)
@@ -130,6 +132,36 @@ def process_option_selection_by_text(state: AgentState, question_idx: int, user_
     logger.info("User provided custom input for question %s", question_idx + 1)
 
 
+def configure_llm_for_run() -> None:
+    providers = supported_llm_providers()
+    provider_input = input(f"LLM provider ({'/'.join(providers)}) [ollama]: ").strip().lower()
+    provider = provider_input or "ollama"
+    if provider not in providers:
+        print_white(f"Unknown provider '{provider}'. Falling back to ollama.")
+        provider = "ollama"
+
+    settings.llm_provider = provider
+
+    model_hint = {
+        "ollama": settings.ollama_model,
+        "anthropic": settings.anthropic_model,
+        "openai": settings.openai_model,
+        "google": settings.google_model,
+    }[provider]
+    model_input = input(f"Model for {provider} [{model_hint}]: ").strip()
+    if not model_input:
+        return
+
+    if provider == "ollama":
+        settings.ollama_model = model_input
+    elif provider == "anthropic":
+        settings.anthropic_model = model_input
+    elif provider == "openai":
+        settings.openai_model = model_input
+    else:
+        settings.google_model = model_input
+
+
 def capture_user_answers(state: AgentState) -> None:
     if state.questions_with_options:
         display_questions_with_options(state)
@@ -180,6 +212,7 @@ def handle_plan_acceptance(state: AgentState) -> AgentState:
 
 
 def run_interactive_session() -> None:
+    configure_llm_for_run()
     cloud_provider = input("Cloud provider (aws/azure/gcp) [aws]: ").strip().lower() or "aws"
     prd_text = input("Enter initial PRD text: ").strip()
     while not prd_text:

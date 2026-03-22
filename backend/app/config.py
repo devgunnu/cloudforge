@@ -10,9 +10,27 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
-    # LLM — all agents use Claude Haiku via Anthropic
-    anthropic_api_key: str = ""
+    # LLM configuration
+    # Supported providers: auto, ollama, anthropic, openai, google
+    llm_provider: str = "auto"
     llm_model: str = HAIKU_MODEL
+
+    # Local/offline default (used when provider=auto, or when cloud provider keys are missing)
+    ollama_model: str = "qwen2.5:7b-instruct"
+    ollama_base_url: str = "http://localhost:11434"
+
+    # Anthropic
+    anthropic_api_key: str = ""
+    anthropic_model: str = HAIKU_MODEL
+
+    # OpenAI
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4.1-mini"
+
+    # Google (Gemini)
+    google_api_key: str = ""
+    google_model: str = "gemini-2.5-flash"
+
     llm_temperature: float = 0.2
     llm_timeout_seconds: int = 90
     enable_web_search: bool = True

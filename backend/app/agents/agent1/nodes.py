@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from typing import Any
 
@@ -111,12 +112,47 @@ def _normalize_question(text: str) -> str:
     return " ".join(text.strip().lower().split())
 
 
+def _question_fingerprint(text: str) -> str:
+    """Build a stable semantic fingerprint for near-duplicate question detection."""
+    normalized = _normalize_question(text)
+    # Drop parenthetical examples to avoid mismatches like
+    # "What deployment environment?" vs "What is the deployment environment (e.g., containers, serverless)?"
+    normalized = re.sub(r"\([^)]*\)", "", normalized)
+    normalized = re.sub(r"^(what is|what are|what|which|are there any)\s+", "", normalized)
+    normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
+    normalized = " ".join(normalized.split())
+
+    stop_words = {
+        "the",
+        "a",
+        "an",
+        "for",
+        "of",
+        "to",
+        "be",
+        "should",
+        "required",
+        "requirements",
+        "platform",
+        "project",
+        "system",
+    }
+    tokens = [tok for tok in normalized.split() if tok not in stop_words]
+    return " ".join(tokens)
+
+
 def _extract_answered_question_set(state: AgentState) -> set[str]:
-    return {
+    exact = {
         _normalize_question(item.get("question", ""))
         for item in state.answered_qa_pairs
         if item.get("question")
     }
+    semantic = {
+        _question_fingerprint(item.get("question", ""))
+        for item in state.answered_qa_pairs
+        if item.get("question")
+    }
+    return {k for k in [*exact, *semantic] if k}
 
 
 def _coerce_clarifier_payload(raw_payload: dict[str, Any]) -> dict[str, Any]:
@@ -203,11 +239,42 @@ def _fallback_unanswered_questions(state: AgentState, limit: int = 2) -> list[st
 def _coerce_planner_payload(raw_payload: dict[str, Any]) -> dict[str, Any]:
     """Normalize planner payload shape for fields where local models may emit dicts."""
     payload = dict(raw_payload)
+
+    # Some models return only the inner plan_json object without wrapper keys.
+    # Wrap it into PlannerOutput-compatible shape to avoid hard parse failures.
+    if "plan_json" not in payload:
+        plan_like_keys = {
+            "scope",
+            "product_summary",
+            "functional_requirements",
+            "non_functional_requirements",
+            "proposed_cloud_services",
+            "architecture_decisions",
+            "deployment_plan",
+            "risks_and_mitigations",
+            "assumptions",
+            "open_questions",
+            "references",
+            "architecture_overview",
+        }
+        if any(k in payload for k in plan_like_keys):
+            payload = {
+                "plan_markdown": payload.get(
+                    "plan_markdown",
+                    "# Final Product Requirement Document\n\nGenerated from clarified requirements.",
+                ),
+                "plan_json": payload,
+            }
+
     plan_json = payload.get("plan_json")
     if not isinstance(plan_json, dict):
         return payload
 
     normalized_plan = dict(plan_json)
+    if not normalized_plan.get("scope"):
+        normalized_plan["scope"] = str(normalized_plan.get("architecture_overview", "Cloud architecture planning"))
+    if not normalized_plan.get("product_summary"):
+        normalized_plan["product_summary"] = str(normalized_plan.get("architecture_overview", "Generated architecture summary"))
     list_fields = [
         "functional_requirements",
         "non_functional_requirements",
@@ -494,13 +561,36 @@ def research_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     filtered_qwo: list[QuestionWithOptions] = []
     for qwo in payload.questions_with_options:
         q_text = qwo.original_question or qwo.question
-        if _normalize_question(q_text) in answered_questions:
+        if _normalize_question(q_text) in answered_questions or _question_fingerprint(q_text) in answered_questions:
             continue
         filtered_qwo.append(qwo)
 
     filtered_followups = [
-        q for q in payload.follow_up_questions if _normalize_question(q) not in answered_questions
+        q
+        for q in payload.follow_up_questions
+        if _normalize_question(q) not in answered_questions and _question_fingerprint(q) not in answered_questions
     ]
+
+    # Remove near-duplicate questions within the same round.
+    dedup_qwo: list[QuestionWithOptions] = []
+    seen_fingerprints: set[str] = set()
+    for qwo in filtered_qwo:
+        fp = _question_fingerprint(qwo.original_question or qwo.question)
+        if not fp or fp in seen_fingerprints:
+            continue
+        seen_fingerprints.add(fp)
+        dedup_qwo.append(qwo)
+    filtered_qwo = dedup_qwo
+
+    dedup_followups: list[str] = []
+    seen_followup_fingerprints: set[str] = set()
+    for q in filtered_followups:
+        fp = _question_fingerprint(q)
+        if not fp or fp in seen_followup_fingerprints:
+            continue
+        seen_followup_fingerprints.add(fp)
+        dedup_followups.append(q)
+    filtered_followups = dedup_followups
 
     model_state.is_information_enough = payload.is_information_enough
     model_state.follow_up_questions = filtered_followups[:8]
