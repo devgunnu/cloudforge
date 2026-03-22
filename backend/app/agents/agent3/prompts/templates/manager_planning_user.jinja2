@@ -1,0 +1,38 @@
+Plan code generation for the following cloud architecture.
+
+## Architecture Summary
+{{ architecture_summary }}
+
+## Terraform Files
+The following Terraform files have been generated:
+{% for fname in tf_file_names %}
+- {{ fname }}
+{% endfor %}
+
+{% for fname, content in tf_files_content.items() %}
+### {{ fname }} (excerpt)
+```hcl
+{{ content[:2000] }}
+```
+{% endfor %}
+
+## Services Requiring Code Generation
+{% for task in code_gen_tasks %}
+- **{{ task.service_id }}** ({{ task.language }}): {{ task.task_type }}
+{% endfor %}
+
+## Connections
+{% for conn in connections %}
+- {{ conn.source }} --[{{ conn.relationship }}]--> {{ conn.target }}
+{% endfor %}
+
+## Service Details
+{% for svc in services %}
+### {{ svc.label }} ({{ svc.id }})
+- Type: {{ svc.service_type }}
+{% if svc.config %}
+- Config: {{ svc.config | tojson(indent=2) }}
+{% endif %}
+{% endfor %}
+
+Analyze this architecture and produce the JSON planning output with api_contracts, task_groups, and plan_summary.

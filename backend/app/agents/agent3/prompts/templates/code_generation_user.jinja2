@@ -1,0 +1,70 @@
+Generate {{ language }} application code for the following AWS service.
+
+{% if architecture_overview %}
+## Architecture Overview
+This service is part of a larger architecture. Understand the full system context so your code integrates correctly with other services:
+
+{{ architecture_overview }}
+{% endif %}
+
+## Service Details
+- ID: {{ service_id }}
+- Type: {{ service_type | upper }}
+- Label: {{ label }}
+{% if config %}
+- Configuration:
+{{ config | tojson(indent=2) }}
+{% endif %}
+
+{% if incoming or outgoing %}
+## Connections
+{% if incoming %}
+This service **receives** from:
+{% for conn in incoming %}
+  - `{{ conn.from }}` via {{ conn.via }}
+{% endfor %}
+{% endif %}
+{% if outgoing %}
+This service **calls / triggers**:
+{% for conn in outgoing %}
+  - `{{ conn.to }}` via {{ conn.via }}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+{% if api_contracts %}
+## API Contracts
+This service participates in the following integration contracts:
+{% for c in api_contracts %}
+### {{ c.source_service_id }} → {{ c.target_service_id }} ({{ c.contract_type }})
+Payload schema:
+{{ c.payload_schema | tojson(indent=2) }}
+{% if c.function_signatures[language] is defined %}
+Expected signature ({{ language }}): `{{ c.function_signatures[language] }}`
+{% endif %}
+{% if c.notes %}Notes: {{ c.notes }}{% endif %}
+{% endfor %}
+{% endif %}
+
+{% if tf_context %}
+## Relevant Terraform Configuration
+The following Terraform resources are provisioned for this service — use the resource names/ARNs as environment variable references:
+```hcl
+{{ tf_context }}
+```
+{% endif %}
+
+## Task
+Generate the handler/entry point file: `services/{{ service_id }}/handler.{{ ext }}`
+
+{% if service_type == "lambda" %}
+The handler must export a function with signature: `def handler(event, context)` (Python) or `export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult>` (TypeScript).
+{% elif service_type == "ecs" or service_type == "ec2" %}
+Generate a long-running service entrypoint appropriate for a container or server process.
+{% elif service_type == "glue" %}
+Generate a PySpark/Glue ETL script with a main() function.
+{% elif service_type == "step_functions" %}
+Generate Lambda handler functions for each state in the state machine.
+{% endif %}
+
+Output ONLY the raw code content. No markdown. No explanation.
