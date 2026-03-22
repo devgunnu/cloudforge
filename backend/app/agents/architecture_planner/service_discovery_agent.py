@@ -11,7 +11,7 @@ from app.agents.architecture_planner.state import (
     ServiceEntry,
 )
 from app.agents.architecture_planner.prompts import render_prompt
-from app.agents.architecture_planner.llm_utils import API_ERROR_TYPES
+from app.agents.architecture_planner.llm_utils import API_ERROR_TYPES, invoke_with_retry
 
 __all__ = ["make_service_discovery_node"]
 
@@ -62,7 +62,9 @@ def make_service_discovery_node(llm, terraform_adapter=None):
         # Step 3: LLM invocation with structured output + JSON parse fallback
         # ------------------------------------------------------------------
         try:
-            result = llm.with_structured_output(ServiceDiscoveryOutput).invoke(messages)
+            result = invoke_with_retry(
+                lambda: llm.with_structured_output(ServiceDiscoveryOutput).invoke(messages)
+            )
         except API_ERROR_TYPES as exc:
             return {
                 "relevant_services": [],
@@ -73,7 +75,7 @@ def make_service_discovery_node(llm, terraform_adapter=None):
         except Exception:
             # Structured output fallback: attempt raw JSON parse
             try:
-                raw = llm.invoke(messages).content
+                raw = invoke_with_retry(lambda: llm.invoke(messages)).content
                 raw = raw.strip()
                 if raw.startswith("```"):
                     raw = raw.split("```")[1]

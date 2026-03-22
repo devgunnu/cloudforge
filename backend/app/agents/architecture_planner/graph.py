@@ -6,6 +6,9 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command, interrupt
 
 from app.agents.architecture_planner.state import (
+    ArchitectureDiagram,
+    ArchNode,
+    ArchConnection,
     ArchitecturePlannerState,
     ClarifyingQuestion,
     ServiceEntry,
@@ -134,7 +137,7 @@ def _build_llm(model_type: str, model_name: str | None):
         model=model_name or settings.llm_model,
         api_key=settings.anthropic_api_key,
         temperature=0,
-        max_tokens=16384,
+        max_tokens=48000,
     )
 
 
@@ -229,7 +232,10 @@ def create_graph(
     # Register custom Pydantic types to silence "Deserializing unregistered type" warnings.
     checkpointer = MemorySaver(
         serde=JsonPlusSerializer(
-            allowed_msgpack_modules=[ClarifyingQuestion, ServiceEntry, ComplianceGap]
+            allowed_msgpack_modules=[
+                ClarifyingQuestion, ServiceEntry, ComplianceGap,
+                ArchitectureDiagram, ArchNode, ArchConnection,
+            ]
         )
     )
     return builder.compile(checkpointer=checkpointer)
