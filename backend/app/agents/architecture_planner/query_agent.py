@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from app.agents.architecture_planner.state import ArchitecturePlannerState, ClarifyingQuestion
 from app.agents.architecture_planner.prompts import render_prompt
-from app.agents.architecture_planner.llm_utils import API_ERROR_TYPES
+from app.agents.architecture_planner.llm_utils import API_ERROR_TYPES, invoke_with_retry
 
 
 # ---------------------------------------------------------------------------
@@ -19,12 +19,14 @@ from app.agents.architecture_planner.llm_utils import API_ERROR_TYPES
 
 def _parse_with_fallback(llm, output_model, messages):
     try:
-        return llm.with_structured_output(output_model).invoke(messages)
+        return invoke_with_retry(
+            lambda: llm.with_structured_output(output_model).invoke(messages)
+        )
     except API_ERROR_TYPES:
         raise  # API-level error — no point trying raw JSON
     except Exception:
         try:
-            raw = llm.invoke(messages).content.strip()
+            raw = invoke_with_retry(lambda: llm.invoke(messages)).content.strip()
             if raw.startswith("```"):
                 parts = raw.split("```")
                 raw = parts[1]
@@ -171,7 +173,7 @@ def make_query_research_node(llm):
             user_answers=state["user_answers"],
         )
         try:
-            response = llm.invoke([HumanMessage(content=prompt)])
+            response = invoke_with_retry(lambda: llm.invoke([HumanMessage(content=prompt)]))
         except API_ERROR_TYPES as exc:
             return {
                 "query_results": "",

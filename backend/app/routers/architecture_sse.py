@@ -158,7 +158,23 @@ async def _stream_arch_start(
                         if "questions" in payload_val:
                             yield _sse({"node": "interrupt", "type": "questions", **payload_val})
                         elif "summary" in payload_val:
-                            yield _sse({"node": "interrupt", "type": "review", **payload_val})
+                            # Include architecture data so the frontend can render it
+                            current_vals = graph_state.values or {}
+                            if current_vals.get("error_message"):
+                                logger.warning(
+                                    "Architecture graph completed with error_message: %s",
+                                    current_vals["error_message"],
+                                )
+                            arch = _serialize_diagram(current_vals.get("architecture_diagram"))
+                            yield _sse({
+                                "node": "interrupt",
+                                "type": "review",
+                                "architecture_diagram": arch,
+                                "nfr_document": current_vals.get("nfr_document"),
+                                "eval_score": current_vals.get("eval_score"),
+                                "session_id": session_id,
+                                **payload_val,
+                            })
                         else:
                             yield _sse({"node": "interrupt", "type": "unknown", "payload": payload_val})
                     yield "data: [DONE]\n\n"
@@ -256,7 +272,22 @@ async def _stream_arch_resume(
                         if "questions" in payload_val:
                             yield _sse({"node": "interrupt", "type": "questions", **payload_val})
                         elif "summary" in payload_val:
-                            yield _sse({"node": "interrupt", "type": "review", **payload_val})
+                            current_vals = graph_state.values or {}
+                            if current_vals.get("error_message"):
+                                logger.warning(
+                                    "Architecture graph completed with error_message: %s",
+                                    current_vals["error_message"],
+                                )
+                            arch = _serialize_diagram(current_vals.get("architecture_diagram"))
+                            yield _sse({
+                                "node": "interrupt",
+                                "type": "review",
+                                "architecture_diagram": arch,
+                                "nfr_document": current_vals.get("nfr_document"),
+                                "eval_score": current_vals.get("eval_score"),
+                                "session_id": session_id,
+                                **payload_val,
+                            })
                         else:
                             yield _sse({"node": "interrupt", "type": "unknown", "payload": payload_val})
                     yield "data: [DONE]\n\n"

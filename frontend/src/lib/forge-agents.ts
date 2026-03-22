@@ -192,7 +192,12 @@ export async function runAgent2(
         if (event.type === 'error') {
           throw new Error((event.message as string) || 'Architecture generation failed');
         }
-        if (event.node === 'complete' && event.architecture_diagram) {
+        // Handle both the final "complete" event and the "review" interrupt —
+        // the interrupt fires when the accept subgraph pauses for human review.
+        // Both carry the full architecture_diagram so we can render it immediately.
+        const isComplete = event.node === 'complete' && event.architecture_diagram;
+        const isReviewInterrupt = event.node === 'interrupt' && event.type === 'review' && event.architecture_diagram;
+        if (isComplete || isReviewInterrupt) {
           const diagram = event.architecture_diagram;
           nodes = (diagram.nodes || []).map((n: Record<string, unknown>) => ({
             id: String(n.id || ''),
