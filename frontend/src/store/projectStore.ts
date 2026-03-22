@@ -29,7 +29,8 @@ interface ProjectStoreState {
   // Legacy mock-backed state (used by existing dashboard UI)
   projects: Project[];
   advanceStage: (id: string) => void;
-  createProject: (name: string) => string;
+  /** @deprecated Use createApiProject instead */
+  createMockProject: (name: string) => string;
 
   // API-backed state
   apiProjects: ApiProject[];
@@ -54,7 +55,8 @@ export const useProjectStore = create<ProjectStoreState>((set) => ({
       }),
     })),
 
-  createProject: (name) => {
+  /** @deprecated Use createApiProject instead */
+  createMockProject: (name) => {
     const id = `proj-${Date.now()}`;
     const newProject: Project = {
       id,

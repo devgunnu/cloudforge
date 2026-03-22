@@ -18,46 +18,8 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function streamSSE(
-  url: string,
-  fetchInit: RequestInit,
-  onEvent: (data: string) => void
-): Promise<void> {
-  const resp = await fetch(url, {
-    ...fetchInit,
-    headers: {
-      'Content-Type': 'application/json',
-      ...fetchInit.headers,
-    },
-  });
-
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  if (!resp.body) throw new Error('No response body');
-
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6).trim();
-        if (data && data !== '[DONE]') {
-          onEvent(data);
-        }
-      }
-    }
-  }
-}
-
 function authHeaders(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
   try {
     const stored = localStorage.getItem('cloudforge-auth');
     if (!stored) return {};
@@ -66,6 +28,83 @@ function authHeaders(): Record<string, string> {
     return { Authorization: `Bearer ${token}` };
   } catch {
     return {};
+  }
+}
+
+async function refreshAccessToken(): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = localStorage.getItem('cloudforge-auth');
+    if (!stored) return null;
+    const refreshToken = JSON.parse(stored)?.state?.refreshToken;
+    if (!refreshToken) return null;
+
+    const resp = await fetch(`${API_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${refreshToken}` },
+    });
+    if (!resp.ok) return null;
+
+    const data = await resp.json();
+    const parsed = JSON.parse(stored);
+    parsed.state.accessToken = data.access_token;
+    localStorage.setItem('cloudforge-auth', JSON.stringify(parsed));
+    return data.access_token;
+  } catch {
+    return null;
+  }
+}
+
+async function streamSSE(
+  url: string,
+  fetchInit: RequestInit,
+  onEvent: (data: string) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const doFetch = async (headers: Record<string, string>) => {
+    return fetch(url, {
+      ...fetchInit,
+      headers: { 'Content-Type': 'application/json', ...fetchInit.headers, ...headers },
+      signal,
+    });
+  };
+
+  let resp = await doFetch({});
+
+  if (resp.status === 401) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      resp = await doFetch({ Authorization: `Bearer ${newToken}` });
+    }
+  }
+
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  if (!resp.body) throw new Error('No response body');
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6).trim();
+          if (data && data !== '[DONE]') {
+            onEvent(data);
+          }
+        }
+      }
+    }
+  } finally {
+    reader.cancel();
   }
 }
 
@@ -82,6 +121,7 @@ export async function runAgent1(
   prdText: string,
   onChip?: (chip: ConstraintChip, index: number) => void,
   projectId?: string,
+  signal?: AbortSignal,
 ): Promise<ConstraintChip[]> {
   const chips: ConstraintChip[] = [];
 
@@ -109,7 +149,8 @@ export async function runAgent1(
           onChip?.(event.chip, chips.length - 1);
         }
       } catch { /* ignore parse errors */ }
-    }
+    },
+    signal,
   );
 
   return chips;
@@ -261,6 +302,7 @@ export async function runAgent2(
   _constraints: ConstraintChip[],
   onStep?: Agent2StepCallback,
   projectId?: string,
+  signal?: AbortSignal,
 ): Promise<{ nodes: ForgeArchNode[]; edges: ForgeArchEdge[] }> {
   if (!projectId) {
     for (let i = 0; i < AGENT2_STEPS.length; i++) {
@@ -310,7 +352,8 @@ export async function runAgent2(
           }));
         }
       } catch { /* ignore */ }
-    }
+    },
+    signal,
   );
 
   return nodes.length > 0 ? { nodes, edges } : { nodes: MOCK_ARCH_NODES, edges: MOCK_ARCH_EDGES };
@@ -467,6 +510,7 @@ export async function runAgent3(
   architectureData: { nodes: ForgeArchNode[]; edges: ForgeArchEdge[] },
   callbacks?: Agent3Callbacks,
   projectId?: string,
+  signal?: AbortSignal,
 ): Promise<GeneratedFile[]> {
   if (!projectId) {
     const total = MOCK_FILES.length;
@@ -530,7 +574,8 @@ export async function runAgent3(
           callbacks?.onProgress(done, total);
         }
       } catch { /* ignore */ }
-    }
+    },
+    signal,
   );
 
   // architectureData is intentionally unused when a real projectId is provided;
@@ -581,6 +626,7 @@ export async function runDeploy(
   _architectureData: { nodes: ForgeArchNode[]; edges: ForgeArchEdge[] },
   callbacks: DeployCallbacks,
   projectId?: string,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (!projectId) {
     for (const event of DEPLOY_SEQUENCE) {
@@ -612,6 +658,7 @@ export async function runDeploy(
           );
         }
       } catch { /* ignore */ }
-    }
+    },
+    signal,
   );
 }
