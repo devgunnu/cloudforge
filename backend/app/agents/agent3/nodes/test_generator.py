@@ -45,6 +45,7 @@ def test_generator_node(state: CodeGenState) -> dict[str, Any]:
         source_code=source_code,
         architecture_context=arch_description,
         ext=ext,
+        architecture_overview=state.get("architecture_overview") or "",
     )
 
     try:

@@ -63,6 +63,7 @@ EXT_MAP: dict[str, str] = {
     "python": "py",
     "typescript": "ts",
     "javascript": "js",
+    "java": "java",
 }
 
 # ---------------------------------------------------------------------------
@@ -76,3 +77,13 @@ RECURSION_STEPS_PER_TASK = 6  # ~2 super-steps per tool call × ~3 tool calls pe
 # ---------------------------------------------------------------------------
 
 TF_BASE_FILES = ["main.tf", "variables.tf", "outputs.tf", "providers.tf"]
+
+# ---------------------------------------------------------------------------
+# Manager / parallel codegen
+# ---------------------------------------------------------------------------
+
+MAX_CODEGEN_WORKERS = 3
+MANAGER_MAX_REVIEW_ITERATIONS = 2
+TEST_EXECUTION_MAX_RETRIES = 2
+PYTEST_TIMEOUT = 60  # seconds
+JEST_TIMEOUT = 60

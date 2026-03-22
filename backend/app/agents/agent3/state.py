@@ -29,7 +29,7 @@ class TaskItem(TypedDict):
     task_id: str
     service_id: str
     task_type: Literal["code_gen", "test_gen"]
-    language: str  # "python", "typescript", etc.
+    language: str  # "python", "typescript", "java", etc.
     status: Literal["pending", "in_progress", "done", "failed"]
     retry_count: int
     error_message: str | None
@@ -47,6 +47,55 @@ class CodeError(TypedDict):
     task_type: str
     file: str
     errors: list[str]
+
+
+class APIContract(TypedDict):
+    """Interface contract between two connected services."""
+    source_service_id: str
+    target_service_id: str
+    relationship: str  # from Connection.relationship
+    contract_type: str  # "event_payload", "api_request", "queue_message", "stream_record"
+    payload_schema: dict[str, Any]  # JSON schema of exchanged data
+    function_signatures: dict[str, str]  # language -> signature string
+    notes: str
+
+
+class TaskGroup(TypedDict):
+    """A group of semantically related services assigned to one codegen worker."""
+    group_id: str
+    service_ids: list[str]
+    tasks: list[TaskItem]  # code_gen tasks only
+    api_contracts: list[APIContract]  # contracts relevant to this group
+    rationale: str  # why these services are grouped
+
+
+class WorkerResult(TypedDict):
+    """Result from a single parallel codegen worker."""
+    group_id: str
+    code_files: dict[str, str]
+    code_errors: list[CodeError]
+    completed_tasks: list[TaskItem]
+
+
+class TestResult(TypedDict):
+    """Result from executing tests for a service."""
+    service_id: str
+    passed: bool
+    output: str  # stdout/stderr from test runner
+    errors: list[str]
+
+
+class CodegenWorkerState(TypedDict):
+    """State for a single parallel codegen worker (used with Send)."""
+    group_id: str
+    tasks: list[TaskItem]
+    api_contracts: list[APIContract]
+    tf_context_map: dict[str, str]  # service_id -> relevant TF lines
+    architecture_context_map: dict[str, str]  # service_id -> architecture JSON blob
+    architecture_overview: str
+    code_files: dict[str, str]
+    code_errors: list[CodeError]
+    completed_task_list: list[TaskItem]
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +129,13 @@ class AgentState(TypedDict):
     orchestrator_iterations: int
     orchestrator_max_iterations: int
 
+    # Manager planning output
+    api_contracts: list[APIContract]
+    task_groups: list[TaskGroup]
+    manager_plan_summary: str
+    worker_results: Annotated[list[WorkerResult], add]  # fan-in from parallel workers
+    manager_review_count: int
+
     # Code artifacts
     code_files: dict[str, str]   # path -> content
     test_files: dict[str, str]
@@ -90,7 +146,9 @@ class AgentState(TypedDict):
         "parsing",
         "tf_generation",
         "tf_validation",
+        "planning",
         "orchestration",
+        "testing",
         "assembly",
         "done",
         "error",
@@ -129,6 +187,7 @@ class CodeGenState(TypedDict):
     task: TaskItem
     tf_context: str
     architecture_context: str        # JSON string: {service_type, label, config, incoming, outgoing}
+    architecture_overview: str       # full architecture summary (all services + connections + TF files)
     generated_code: str | None
     generated_tests: str | None
     syntax_errors: Annotated[list[str], add]

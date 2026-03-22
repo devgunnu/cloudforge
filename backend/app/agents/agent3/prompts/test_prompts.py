@@ -14,6 +14,7 @@ def test_generation_user(
     source_code: str,
     architecture_context: str,
     ext: str,
+    architecture_overview: str = "",
 ) -> str:
     return render(
         "test_generation_user.jinja2",
@@ -23,4 +24,5 @@ def test_generation_user(
         source_code=source_code,
         architecture_context=architecture_context,
         ext=ext,
+        architecture_overview=architecture_overview,
     )

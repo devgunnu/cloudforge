@@ -13,6 +13,12 @@ Testing framework: Jest
 - Use `describe` / `it` / `expect` structure
 - Mock environment variables with `process.env`
 - Test the happy path AND at least 2 error/edge cases per exported function
+{% elif language == "java" %}
+Testing framework: JUnit
+- Use `Mockito` for AWS service mocking
+- Use `@BeforeEach` for shared setup
+- Use `@Test` for test methods
+- Test the happy path AND at least 2 error/edge cases per method
 {% else %}
 - Use the standard testing framework for {{ language }}
 - Mock all external dependencies

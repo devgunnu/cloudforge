@@ -19,6 +19,8 @@ def code_generation_user(
     outgoing: list[dict[str, str]],
     tf_context: str,
     ext: str,
+    architecture_overview: str = "",
+    api_contracts: list[dict[str, Any]] | None = None,
 ) -> str:
     return render(
         "code_generation_user.jinja2",
@@ -31,6 +33,8 @@ def code_generation_user(
         outgoing=outgoing,
         tf_context=tf_context,
         ext=ext,
+        architecture_overview=architecture_overview,
+        api_contracts=api_contracts or [],
     )
 
 

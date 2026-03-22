@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import re
 import subprocess
 import tempfile
 from pathlib import Path
@@ -86,6 +87,55 @@ def _basic_ts_check(code: str) -> list[str]:
     return errors
 
 
+def check_java_syntax(code: str) -> list[str]:
+    """
+    Check Java syntax by writing to a temp file and running javac.
+    Returns a list of error strings (empty = no errors).
+    """
+    try:
+        match = re.search(r'public\s+(?:abstract\s+)?(?:final\s+)?(?:class|interface|enum|record)\s+(\w+)', code)
+        filename = f"{match.group(1)}.java" if match else "Main.java"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            java_file = Path(tmpdir) / filename
+            java_file.write_text(code, encoding="utf-8")
+
+            result = subprocess.run(
+                ["javac", str(java_file)],
+                cwd=tmpdir,
+                capture_output=True,
+                text=True,
+                timeout=TSC_TIMEOUT,
+            )
+            if result.returncode == 0:
+                return []
+            
+            # Parse javac output
+            errors: list[str] = []
+            for line in result.stderr.splitlines():
+                if line.strip():
+                    errors.append(line.strip())
+            return errors
+    except FileNotFoundError:
+        # javac not installed — fall back to basic bracket matching
+        return _basic_java_check(code)
+    except subprocess.TimeoutExpired:
+        return ["javac timed out — syntax check skipped"]
+    except Exception as e:
+        return [f"Java check error: {e}"]
+
+
+def _basic_java_check(code: str) -> list[str]:
+    """Minimal fallback syntax check when javac is not available."""
+    errors: list[str] = []
+    open_braces = code.count("{") - code.count("}")
+    open_parens = code.count("(") - code.count(")")
+    if open_braces != 0:
+        errors.append(f"Unbalanced braces: {open_braces:+d}")
+    if open_parens != 0:
+        errors.append(f"Unbalanced parentheses: {open_parens:+d}")
+    return errors
+
 def check_syntax(code: str, language: str, filename: str | None = None) -> list[str]:
     """Dispatch to the appropriate syntax checker based on language."""
     if language == "python":
@@ -93,6 +143,8 @@ def check_syntax(code: str, language: str, filename: str | None = None) -> list[
     elif language == "typescript":
         fname = filename or "handler.ts"
         return check_typescript_syntax(code, fname)
+    elif language == "java":
+        return check_java_syntax(code)
     else:
         # Unknown language — no check
         return []

@@ -243,5 +243,9 @@ def create_graph(
     )
     return builder.compile(checkpointer=checkpointer)
 
-
 __all__ = ["create_graph"]
+
+if __name__ == "__main__":
+    # For testing: build the graph and print the nodes
+    graph = create_graph().get_graph(xray=True).draw_mermaid()
+    print(graph)

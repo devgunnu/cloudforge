@@ -2,17 +2,42 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from dataclasses import dataclass, field
 from typing import Any
 
 from app.agents.agent3.config import CODE_MAX_RETRIES, EXT_MAP
+from app.agents.agent3.prompts.orchestrator_prompts import orchestrator_system
 from app.agents.agent3.state import AgentState, CodeError, CodeGenState, TaskItem
 from app.agents.agent3.tools.task_tools import (
+    build_architecture_summary,
     describe_service,
     extract_tf_context_for_service,
 )
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Lazy singleton for the code-generation subgraph.
+# Compiled internally so the parent graph never holds a closure reference,
+# keeping xray rendering clean (orchestrator shows as a single node).
+# ---------------------------------------------------------------------------
+
+_code_subgraph = None
+_code_subgraph_lock = threading.Lock()
+
+
+def _get_code_subgraph():
+    """Return the compiled code-generation subgraph (lazy, thread-safe)."""
+    global _code_subgraph
+    if _code_subgraph is None:
+        with _code_subgraph_lock:
+            if _code_subgraph is None:
+                from app.agents.agent3.subgraphs.code_generation_loop import (
+                    compile_code_generation_subgraph,
+                )
+                _code_subgraph = compile_code_generation_subgraph()
+    return _code_subgraph
 
 # ---------------------------------------------------------------------------
 # Mutable context shared across code-gen invocations
@@ -81,6 +106,7 @@ def _run_code_gen(
     code_subgraph: Any,
     service_id: str,
     task: TaskItem,
+    architecture_overview: str,
 ) -> None:
     """Generate application code for a service via the code-generation subgraph."""
     language = task["language"]
@@ -102,6 +128,7 @@ def _run_code_gen(
         ),
         tf_context=tf_ctx,
         architecture_context=arch_ctx,
+        architecture_overview=architecture_overview,
         generated_code=None,
         generated_tests=None,
         syntax_errors=[],
@@ -153,6 +180,7 @@ def _run_test_gen(
     code_subgraph: Any,
     service_id: str,
     task: TaskItem,
+    architecture_overview: str,
 ) -> None:
     """Generate unit tests for a service via the code-generation subgraph."""
     language = task["language"]
@@ -176,6 +204,7 @@ def _run_test_gen(
         ),
         tf_context="",
         architecture_context=arch_ctx,
+        architecture_overview=architecture_overview,
         generated_code=source_code,
         generated_tests=None,
         syntax_errors=[],
@@ -226,20 +255,36 @@ def _run_test_gen(
 # ---------------------------------------------------------------------------
 
 
-def make_orchestrator_node(compiled_code_subgraph: Any):
-    """Factory: returns a LangGraph node function closed over the compiled code subgraph.
+def make_orchestrator_node():
+    """Factory: returns a LangGraph node function for code generation orchestration.
 
     Uses direct invocation instead of a ReAct agent — the orchestration logic
     is deterministic (iterate services, code before tests) and does not require
     tool-calling LLM support.
+
+    The code-generation subgraph is compiled lazily as an internal singleton,
+    so the parent graph never holds a closure reference to it.
     """
 
     def orchestrator_node(state: AgentState) -> dict[str, Any]:
+        compiled_code_subgraph = _get_code_subgraph()
         ctx = _OrchestratorCtx(
             code_files=dict(state.get("code_files") or {}),
             test_files=dict(state.get("test_files") or {}),
             task_list=list(state.get("task_list") or []),
             code_errors=[],
+        )
+
+        # Build the full architecture overview via the orchestrator prompt template.
+        # This gives each code/test generator awareness of the entire system topology,
+        # not just the single service it's generating for.
+        services = state.get("services") or []
+        connections = state.get("connections") or []
+        tf_files = state.get("tf_files") or {}
+        arch_summary = build_architecture_summary(services, connections)
+        arch_overview = orchestrator_system(
+            architecture_summary=arch_summary,
+            tf_file_names=list(tf_files.keys()),
         )
 
         # Collect unique service IDs in task-list order
@@ -258,13 +303,13 @@ def make_orchestrator_node(compiled_code_subgraph: Any):
 
             # --- Code generation ---
             if code_task and code_task["status"] == "pending":
-                _run_code_gen(ctx, state, compiled_code_subgraph, service_id, code_task)
+                _run_code_gen(ctx, state, compiled_code_subgraph, service_id, code_task, arch_overview)
 
             # --- Test generation (only if code succeeded) ---
             if test_task and test_task["status"] == "pending":
                 code_task_now = ctx.find_task(service_id, "code_gen")
                 if code_task_now is None or code_task_now["status"] == "done":
-                    _run_test_gen(ctx, state, compiled_code_subgraph, service_id, test_task)
+                    _run_test_gen(ctx, state, compiled_code_subgraph, service_id, test_task, arch_overview)
                 else:
                     ctx.set_task_status(
                         test_task["task_id"],

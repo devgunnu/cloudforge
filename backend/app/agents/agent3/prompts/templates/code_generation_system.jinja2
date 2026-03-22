@@ -12,6 +12,11 @@ Language: {{ language }}
 - Use @aws-sdk/client-* packages (v3 modular SDK)
 - Export handler as a named export
 - Use console.log/error for logging with structured JSON
+{% elif language == "java" %}
+- Use Java 17 or later
+- Use AWS SDK for Java v2
+- Use SLF4J for logging
+- Follow Java naming conventions and best practices
 {% else %}
 - Write clean, idiomatic {{ language }} code
 - Follow language best practices and conventions

@@ -32,6 +32,20 @@ This service **calls / triggers**:
 {% endif %}
 {% endif %}
 
+{% if api_contracts %}
+## API Contracts
+This service participates in the following integration contracts:
+{% for c in api_contracts %}
+### {{ c.source_service_id }} → {{ c.target_service_id }} ({{ c.contract_type }})
+Payload schema:
+{{ c.payload_schema | tojson(indent=2) }}
+{% if c.function_signatures[language] is defined %}
+Expected signature ({{ language }}): `{{ c.function_signatures[language] }}`
+{% endif %}
+{% if c.notes %}Notes: {{ c.notes }}{% endif %}
+{% endfor %}
+{% endif %}
+
 {% if tf_context %}
 ## Relevant Terraform Configuration
 The following Terraform resources are provisioned for this service — use the resource names/ARNs as environment variable references:

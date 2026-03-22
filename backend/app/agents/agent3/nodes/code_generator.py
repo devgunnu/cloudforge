@@ -30,6 +30,7 @@ def code_generator_node(state: CodeGenState) -> dict[str, Any]:
     config: dict[str, Any] = ctx.get("config") or {}
     incoming: list[dict[str, str]] = ctx.get("incoming") or []
     outgoing: list[dict[str, str]] = ctx.get("outgoing") or []
+    api_contracts: list[dict[str, Any]] = ctx.get("api_contracts") or []
 
     system_msg = code_generation_system(language=language)
     user_msg = code_generation_user(
@@ -42,6 +43,8 @@ def code_generator_node(state: CodeGenState) -> dict[str, Any]:
         outgoing=outgoing,
         tf_context=state.get("tf_context") or "",
         ext=ext,
+        architecture_overview=state.get("architecture_overview") or "",
+        api_contracts=api_contracts,
     )
 
     try:
