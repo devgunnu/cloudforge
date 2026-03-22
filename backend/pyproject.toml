@@ -33,10 +33,11 @@ dependencies = [
     "motor>=3.3",
     "pymongo>=4.6",
     "cryptography",
-    "python-jose[cryptography]",
+    "PyJWT>=2.8.0",
     "passlib[bcrypt]",
     "httpx",
     "boto3",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]
