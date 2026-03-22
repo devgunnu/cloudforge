@@ -26,16 +26,29 @@ REQUIRED_RESEARCH_AREAS = [
 ]
 
 
+FALLBACK_CLARIFICATION_QUESTIONS = [
+    "What user personas and core workflows should this product support?",
+    "What are target scale, latency, availability, and compliance requirements?",
+    "What are your primary data retention and lifecycle requirements?",
+    "Which third-party systems must be integrated at launch?",
+    "What are your observability, alerting, and incident response expectations?",
+    "What are your budget guardrails and cost optimization constraints?",
+]
+
+
 def _extract_json(text: str) -> dict[str, Any]:
-    # The LLM may prepend explanation text; we recover the first JSON object safely.
+    # The LLM may prepend/append prose or emit multiple JSON blocks.
+    # Parse the first JSON object safely and ignore trailing data.
     text = text.strip()
     try:
         return json.loads(text)
     except json.JSONDecodeError:
         start = text.find("{")
-        end = text.rfind("}")
-        if start >= 0 and end > start:
-            return json.loads(text[start : end + 1])
+        if start >= 0:
+            decoder = json.JSONDecoder()
+            obj, _ = decoder.raw_decode(text[start:])
+            if isinstance(obj, dict):
+                return obj
         raise
 
 
@@ -92,6 +105,166 @@ def _normalize_options_metadata(payload: ClarifierOutput) -> None:
                     option.impact = "Planner will adapt architecture using your custom guidance."
                 else:
                     option.impact = "This choice directly influences service sizing, architecture complexity, and cost."
+
+
+def _normalize_question(text: str) -> str:
+    return " ".join(text.strip().lower().split())
+
+
+def _extract_answered_question_set(state: AgentState) -> set[str]:
+    return {
+        _normalize_question(item.get("question", ""))
+        for item in state.answered_qa_pairs
+        if item.get("question")
+    }
+
+
+def _coerce_clarifier_payload(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize model output into ClarifierOutput-compatible shape.
+
+    Some local models (e.g. Gemma) return follow_up_questions entries as objects.
+    This coercion extracts question strings and preserves option blocks when present.
+    """
+    normalized = dict(raw_payload)
+
+    followups = normalized.get("follow_up_questions", [])
+    qwo = normalized.get("questions_with_options", [])
+
+    normalized_followups: list[str] = []
+    normalized_qwo: list[dict[str, Any]] = []
+
+    for item in followups if isinstance(followups, list) else []:
+        if isinstance(item, str):
+            normalized_followups.append(item)
+            continue
+        if not isinstance(item, dict):
+            continue
+
+        q_text = str(item.get("question", "")).strip()
+        if not q_text:
+            continue
+        normalized_followups.append(q_text)
+
+        options = item.get("options", [])
+        if isinstance(options, list) and options:
+            normalized_qwo.append(
+                {
+                    "question": q_text,
+                    "original_question": q_text,
+                    "options": options,
+                }
+            )
+
+    for item in qwo if isinstance(qwo, list) else []:
+        if not isinstance(item, dict):
+            continue
+        q_text = str(item.get("original_question") or item.get("question") or "").strip()
+        if not q_text:
+            continue
+        normalized_qwo.append(
+            {
+                "question": str(item.get("question") or q_text),
+                "original_question": q_text,
+                "options": item.get("options", []),
+            }
+        )
+        normalized_followups.append(q_text)
+
+    # Keep stable order while deduplicating.
+    dedup_followups: list[str] = []
+    seen_followups: set[str] = set()
+    for q in normalized_followups:
+        k = _normalize_question(q)
+        if not k or k in seen_followups:
+            continue
+        seen_followups.add(k)
+        dedup_followups.append(q)
+
+    dedup_qwo: list[dict[str, Any]] = []
+    seen_qwo: set[str] = set()
+    for item in normalized_qwo:
+        k = _normalize_question(item.get("original_question", ""))
+        if not k or k in seen_qwo:
+            continue
+        seen_qwo.add(k)
+        dedup_qwo.append(item)
+
+    normalized["follow_up_questions"] = dedup_followups
+    normalized["questions_with_options"] = dedup_qwo
+    return normalized
+
+
+def _fallback_unanswered_questions(state: AgentState, limit: int = 2) -> list[str]:
+    answered = _extract_answered_question_set(state)
+    questions = [q for q in FALLBACK_CLARIFICATION_QUESTIONS if _normalize_question(q) not in answered]
+    return questions[:limit]
+
+
+def _coerce_planner_payload(raw_payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize planner payload shape for fields where local models may emit dicts."""
+    payload = dict(raw_payload)
+    plan_json = payload.get("plan_json")
+    if not isinstance(plan_json, dict):
+        return payload
+
+    normalized_plan = dict(plan_json)
+    list_fields = [
+        "functional_requirements",
+        "non_functional_requirements",
+        "proposed_cloud_services",
+        "architecture_decisions",
+        "deployment_plan",
+        "risks_and_mitigations",
+        "assumptions",
+        "open_questions",
+        "references",
+    ]
+
+    for field in list_fields:
+        value = normalized_plan.get(field)
+        if isinstance(value, list):
+            continue
+        if isinstance(value, dict):
+            # Preserve deterministic order by key when model emits phase_1/phase_2 maps.
+            normalized_plan[field] = [str(value[k]) for k in sorted(value)]
+        elif value is None:
+            normalized_plan[field] = []
+        else:
+            normalized_plan[field] = [str(value)]
+
+    payload["plan_json"] = normalized_plan
+    return payload
+
+
+def _ingest_selected_answers(state: AgentState) -> None:
+    """Convert selected answers into stable Q&A history before research mutates questions."""
+    if not state.selected_option_answers:
+        return
+
+    for q_idx, selected_value in state.selected_option_answers.items():
+        if q_idx >= len(state.questions_with_options):
+            continue
+
+        question_obj = state.questions_with_options[q_idx]
+        question_text = question_obj.original_question or question_obj.question
+
+        matched_option = None
+        for opt in question_obj.options:
+            if opt.value == selected_value:
+                matched_option = opt
+                break
+
+        if matched_option:
+            answer_text = matched_option.label if not matched_option.is_custom else selected_value
+            logger.info("User selected option for '%s': %s", question_text, answer_text)
+        else:
+            answer_text = selected_value
+            logger.info("User provided custom input for '%s': %s", question_text, answer_text)
+
+        state.user_answers.append(answer_text)
+        state.answered_qa_pairs.append({"question": question_text, "answer": answer_text})
+
+    state.selected_option_answers = {}
 
 
 def _fallback_options_for_question(question: str) -> list[QuestionOption]:
@@ -214,22 +387,31 @@ def _fallback_options_for_question(question: str) -> list[QuestionOption]:
 
 
 def _ensure_questions_have_options(payload: ClarifierOutput) -> None:
-    if payload.questions_with_options:
-        return
+    question_to_options: dict[str, QuestionWithOptions] = {}
 
-    payload.questions_with_options = [
-        QuestionWithOptions(
+    for item in payload.questions_with_options:
+        q = item.original_question or item.question
+        if not q:
+            continue
+        question_to_options[_normalize_question(q)] = item
+
+    for question in payload.follow_up_questions:
+        key = _normalize_question(question)
+        if key in question_to_options:
+            continue
+        question_to_options[key] = QuestionWithOptions(
             question=question,
             original_question=question,
             options=_fallback_options_for_question(question),
         )
-        for question in payload.follow_up_questions
-    ]
+
+    payload.questions_with_options = list(question_to_options.values())
 
 
 def user_input_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     model_state = _as_state(state)
     logger.info("Processing user input")
+    _ingest_selected_answers(model_state)
     model_state.status = "running"
     return _dump_state(model_state)
 
@@ -254,7 +436,9 @@ def research_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     qa_history = ""
     if model_state.answered_qa_pairs:
         qa_history = "Previously Answered Questions:\n"
-        for q, a in model_state.answered_qa_pairs:
+        for qa_pair in model_state.answered_qa_pairs:
+            q = qa_pair.get("question", "")
+            a = qa_pair.get("answer", "")
             qa_history += f"Q: {q}\nA: {a}\n\n"
         qa_history += "\n"
     
@@ -272,17 +456,22 @@ def research_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
         response = llm.invoke(prompt)
         elapsed = time.perf_counter() - start
         logger.info("Research analysis completed in %.2f seconds", elapsed)
-        payload = ClarifierOutput.model_validate(_extract_json(str(response.content)))
+        raw_payload = _extract_json(str(response.content))
+        payload = ClarifierOutput.model_validate(_coerce_clarifier_payload(raw_payload))
         _ensure_questions_have_options(payload)
         _normalize_options_metadata(payload)
     except Exception as exc:  # noqa: BLE001
         _safe_errors(model_state, f"clarifier_failed: {exc}")
         model_state.status = "needs_input"
-        if not model_state.follow_up_questions:
-            model_state.follow_up_questions = [
-                "What user personas and core workflows should this product support?",
-                "What are target scale, latency, availability, and compliance requirements?",
-            ]
+        next_questions = _fallback_unanswered_questions(model_state, limit=2)
+        if not next_questions:
+            model_state.is_information_enough = True
+            model_state.follow_up_questions = []
+            model_state.questions_with_options = []
+            model_state.run_web_search = False
+            return _dump_state(model_state)
+
+        model_state.follow_up_questions = next_questions
         fallback_payload = ClarifierOutput(
             is_information_enough=False,
             follow_up_questions=model_state.follow_up_questions,
@@ -300,10 +489,39 @@ def research_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
         (payload.follow_up_questions[0] if payload.follow_up_questions else "none"),
     )
 
-    model_state.follow_up_questions = payload.follow_up_questions[:8]
-    model_state.questions_with_options = payload.questions_with_options[:8]
-    model_state.research_queries = _augment_research_queries(model_state, payload.research_queries)
+    answered_questions = _extract_answered_question_set(model_state)
+
+    filtered_qwo: list[QuestionWithOptions] = []
+    for qwo in payload.questions_with_options:
+        q_text = qwo.original_question or qwo.question
+        if _normalize_question(q_text) in answered_questions:
+            continue
+        filtered_qwo.append(qwo)
+
+    filtered_followups = [
+        q for q in payload.follow_up_questions if _normalize_question(q) not in answered_questions
+    ]
+
     model_state.is_information_enough = payload.is_information_enough
+    model_state.follow_up_questions = filtered_followups[:8]
+    model_state.questions_with_options = filtered_qwo[:8]
+
+    if not model_state.is_information_enough and not model_state.follow_up_questions:
+        next_questions = _fallback_unanswered_questions(model_state, limit=2)
+        if next_questions:
+            model_state.follow_up_questions = next_questions
+            fallback_payload = ClarifierOutput(
+                is_information_enough=False,
+                follow_up_questions=next_questions,
+                research_queries=payload.research_queries,
+            )
+            _ensure_questions_have_options(fallback_payload)
+            _normalize_options_metadata(fallback_payload)
+            model_state.questions_with_options = fallback_payload.questions_with_options
+        else:
+            model_state.is_information_enough = True
+
+    model_state.research_queries = _augment_research_queries(model_state, payload.research_queries)
     logger.info(
         "Requirement clarity check: enough=%s, questions=%s, research_queries=%s",
         model_state.is_information_enough,
@@ -360,44 +578,25 @@ def web_search_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
 def information_gate_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     model_state = _as_state(state)
     logger.info("Checking if product requirements are clear enough")
-
-    # If user provided selected option answers, convert them to natural language user answers
-    # and track Q&A pairs for clarity in subsequent clarification rounds.
-    if model_state.selected_option_answers:
-        for q_idx, selected_value in model_state.selected_option_answers.items():
-            if q_idx < len(model_state.questions_with_options):
-                question_obj = model_state.questions_with_options[q_idx]
-                # Find matching option to create a natural language response
-                matched_option = None
-                for opt in question_obj.options:
-                    if opt.value == selected_value:
-                        matched_option = opt
-                        break
-                
-                if matched_option:
-                    # Predefined option: use label for display
-                    response = matched_option.label if not matched_option.is_custom else selected_value
-                    logger.info("User selected option for '%s': %s", question_obj.original_question, response)
-                    model_state.user_answers.append(response)
-                    # Track Q&A pair for next round's clarification
-                    model_state.answered_qa_pairs.append((question_obj.original_question, response))
-                else:
-                    # No matching option found - treat as custom freeform input
-                    # (user bypassed option selection and provided direct text)
-                    logger.info("User provided custom input for '%s': %s", question_obj.original_question, selected_value)
-                    model_state.user_answers.append(selected_value)
-                    # Track Q&A pair for next round's clarification
-                    model_state.answered_qa_pairs.append((question_obj.original_question, selected_value))
-        model_state.selected_option_answers = {}  # Clear after processing
     
     if not model_state.is_information_enough:
         model_state.status = "needs_input"
-        questions = model_state.follow_up_questions
-        if not questions:
-            model_state.follow_up_questions = [
-                "What are your expected monthly active users and peak RPS?",
-                "Which data compliance requirements must be met (e.g., SOC2, HIPAA)?",
-            ]
+        if not model_state.follow_up_questions:
+            next_questions = _fallback_unanswered_questions(model_state, limit=2)
+            if next_questions:
+                model_state.follow_up_questions = next_questions
+                fallback_payload = ClarifierOutput(
+                    is_information_enough=False,
+                    follow_up_questions=next_questions,
+                    research_queries=[],
+                )
+                _ensure_questions_have_options(fallback_payload)
+                _normalize_options_metadata(fallback_payload)
+                model_state.questions_with_options = fallback_payload.questions_with_options
+            else:
+                model_state.is_information_enough = True
+                model_state.status = "running"
+                return _dump_state(model_state)
         logger.info(
             "Some requirements are not clear, asking user via multiple-choice options",
         )
@@ -439,7 +638,8 @@ def plan_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
             "PRD generation completed in %.2f seconds",
             time.perf_counter() - start,
         )
-        payload = PlannerOutput.model_validate(_extract_json(str(response.content)))
+        raw_payload = _extract_json(str(response.content))
+        payload = PlannerOutput.model_validate(_coerce_planner_payload(raw_payload))
 
         # CoT is not logged; show a safe reasoning summary from structured model output.
         logger.info(

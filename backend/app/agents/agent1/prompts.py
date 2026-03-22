@@ -53,6 +53,8 @@ Rules:
 - Keep asking until requirements are implementation-ready.
 - Cover these dimensions: product goals, users, scale, latency/SLO, availability, security, compliance, data model, integrations, observability, disaster recovery, cost constraints, rollout strategy.
 - For each follow_up_question, generate a corresponding entry in questions_with_options with 2-4 relevant predefined options.
+- `follow_up_questions` MUST be a plain array of strings only, never objects.
+- Put all option metadata only inside `questions_with_options`, not inside `follow_up_questions`.
 - Every option MUST include `description` and `impact` so users understand trade-offs before selecting.
 - Keep `description` and `impact` concise and practical (1 sentence each).
 - The last option MUST always be a "Custom" option (is_custom: true) where users can provide their own value.
