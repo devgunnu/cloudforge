@@ -597,6 +597,9 @@ export default function BuildPanel() {
     }, currentProjectId ?? undefined).then(() => {
       setStageStatus('build', 'done');
       setBuildProgress(buildTotal, buildTotal);
+      // Auto-open all generated files so the Files view is populated
+      const allFiles = Object.values(useForgeStore.getState().generatedFiles);
+      allFiles.forEach((f) => openFile(f.id));
       addChatMessage('build', {
         id: `agent3-done-${Date.now()}`,
         role: 'agent',

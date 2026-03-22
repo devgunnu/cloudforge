@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { ForgeArchNode, ForgeArchEdge } from '@/store/forgeStore';
 import { AWS_ICONS } from '@/lib/aws-icons';
+import type { AwsIconKey } from '@/lib/aws-icons';
 
 /* ── Types ──────────────────────────────────────────────────────────────────── */
 
@@ -31,6 +32,10 @@ export type AWSServiceId =
   | 'eks'
   | 'kinesis'
   | 'internet'
+  | 'cloudwatch'
+  | 'xray'
+  | 'secretsmanager'
+  | 'iam'
   | 'generic';
 
 export interface DrawIONode {
@@ -45,7 +50,6 @@ export interface DrawIONode {
   height?: number;
   groupColor?: string;
   layer?: string;
-  /** Optional per-node config override */
   config?: Record<string, string>;
   description?: string;
 }
@@ -60,13 +64,7 @@ export interface DrawIOEdge {
 export interface ArchDiagramProps {
   nodes?: DrawIONode[];
   edges?: DrawIOEdge[];
-  /**
-   * When provided, ArchDiagram runs in controlled mode:
-   * - node clicks call onNodeSelect instead of opening the internal ConfigPanel
-   * - the internal side panel is suppressed
-   */
   onNodeSelect?: (nodeId: string | null) => void;
-  /** Controlled selected node ID — used for the selection ring when in controlled mode */
   selectedNodeId?: string | null;
 }
 
@@ -74,9 +72,8 @@ export interface ArchDiagramProps {
 
 interface ServiceConfig {
   bg: string;
-  shape: 'circle' | 'roundedSquare';
+  shape: 'roundedSquare';
   abbr: string;
-  /** Icon path fill colour — defaults to 'white'. Use '#333' for transparent-bg icons. */
   iconColor?: string;
 }
 
@@ -90,7 +87,7 @@ interface NodeConfigData {
 }
 
 const AWS_SERVICE_CONFIG: Record<AWSServiceId, ServiceConfig> = {
-  lambda:        { bg: '#FF9900', shape: 'circle',        abbr: 'λ'   },
+  lambda:        { bg: '#FF9900', shape: 'roundedSquare', abbr: 'λ'   },
   s3:            { bg: '#3F8624', shape: 'roundedSquare', abbr: 'S3'  },
   apigateway:    { bg: '#8C4FFF', shape: 'roundedSquare', abbr: 'API' },
   sqs:           { bg: '#FF4F8B', shape: 'roundedSquare', abbr: 'SQS' },
@@ -109,9 +106,42 @@ const AWS_SERVICE_CONFIG: Record<AWSServiceId, ServiceConfig> = {
   elb:           { bg: '#8C4FFF', shape: 'roundedSquare', abbr: 'ELB' },
   ec2:           { bg: '#FF9900', shape: 'roundedSquare', abbr: 'EC2' },
   eks:           { bg: '#FF9900', shape: 'roundedSquare', abbr: 'EKS' },
-  kinesis:       { bg: '#8C4FFF', shape: 'roundedSquare', abbr: 'KNS'            },
-  internet:      { bg: 'none',    shape: 'roundedSquare', abbr: 'NET', iconColor: '#444' },
-  generic:       { bg: '#545B64', shape: 'roundedSquare', abbr: '?'               },
+  kinesis:       { bg: '#8C4FFF', shape: 'roundedSquare', abbr: 'KNS' },
+  internet:      { bg: '#545B64', shape: 'roundedSquare', abbr: 'NET', iconColor: '#444' },
+  cloudwatch:    { bg: '#FF9900', shape: 'roundedSquare', abbr: 'CW'  },
+  xray:          { bg: '#FF9900', shape: 'roundedSquare', abbr: 'XR'  },
+  secretsmanager:{ bg: '#DD3522', shape: 'roundedSquare', abbr: 'SM'  },
+  iam:           { bg: '#DD3522', shape: 'roundedSquare', abbr: 'IAM' },
+  generic:       { bg: '#545B64', shape: 'roundedSquare', abbr: '?'   },
+};
+
+const SERVICE_TO_ICON: Record<AWSServiceId, AwsIconKey> = {
+  lambda:        'lambda',
+  s3:            's3',
+  apigateway:    'apigateway',
+  sqs:           'sqs',
+  eventbridge:   'eventbridge',
+  bedrock:       'bedrock',
+  neptune:       'neptune',
+  amplify:       'amplify',
+  dynamodb:      'dynamodb',
+  rds:           'rds',
+  cloudfront:    'cloudfront',
+  cognito:       'cognito',
+  ecs:           'ecs',
+  sns:           'sns',
+  stepfunctions: 'stepfunctions',
+  route53:       'route53',
+  elb:           'elb',
+  ec2:           'ec2',
+  eks:           'eks',
+  kinesis:       'kinesis',
+  internet:      'internet',
+  cloudwatch:    'cloudwatch',
+  xray:          'xray',
+  secretsmanager:'secretsmanager',
+  iam:           'iam',
+  generic:       'generic',
 };
 
 const SERVICE_CONFIG_DATA: Partial<Record<AWSServiceId, NodeConfigData>> = {
@@ -419,12 +449,10 @@ const SERVICE_CONFIG_DATA: Partial<Record<AWSServiceId, NodeConfigData>> = {
 /* ── Default Mock Data ───────────────────────────────────────────────────────── */
 
 const DEFAULT_NODES: DrawIONode[] = [
-  // ── Section labels ─────────────────────────────────────────────────────────
   { id: 'sec1', type: 'sectionLabel', x: 20,  y: 10,  label: 'Live Search' },
   { id: 'sec2', type: 'sectionLabel', x: 20,  y: 840, label: 'Job Search Batch Process' },
   { id: 'sec3', type: 'sectionLabel', x: 460, y: 840, label: 'Communication Batch Process' },
 
-  // ── Live Search ────────────────────────────────────────────────────────────
   { id: 'users',    type: 'user',    x: 60,  y: 70,  label: 'Students' },
   { id: 'amplify',  type: 'service', x: 200, y: 140, label: 'AWS Amplify',  service: 'amplify' },
   { id: 'lambda1',  type: 'service', x: 340, y: 60,  label: 'Lambda', sublabel: 'Save Resume',    service: 'lambda' },
@@ -435,7 +463,6 @@ const DEFAULT_NODES: DrawIONode[] = [
   { id: 'apigw',    type: 'service', x: 340, y: 325, label: 'API Gateway',   service: 'apigateway' },
   { id: 'lambda4',  type: 'service', x: 200, y: 390, label: 'Lambda',        service: 'lambda' },
 
-  // ── Agentcore group ────────────────────────────────────────────────────────
   { id: 'g_agentcore', type: 'group', x: 28, y: 462, width: 600, height: 320, label: 'Agentcore', groupColor: '#8C4FFF' },
   { id: 'g_runtime',   type: 'group', x: 150, y: 492, width: 400, height: 270, label: 'Runtime',  groupColor: '#999' },
 
@@ -445,10 +472,8 @@ const DEFAULT_NODES: DrawIONode[] = [
   { id: 'career',       type: 'service', x: 380, y: 510, label: 'Career Exploration Agent', service: 'bedrock' },
   { id: 'jobsearch',    type: 'service', x: 380, y: 650, label: 'Job Search Agent',    service: 'bedrock' },
 
-  // ── Internet (globe) — above Tools ────────────────────────────────────────
   { id: 'internet',     type: 'service', x: 710, y: 250, label: 'Internet', service: 'internet' },
 
-  // ── Tools group ────────────────────────────────────────────────────────────
   { id: 'g_tools', type: 'group', x: 660, y: 370, width: 320, height: 400, label: 'Tools', groupColor: '#8C4FFF' },
 
   { id: 'bedrock_kb',   type: 'service', x: 680, y: 420, label: 'Bedrock Knowledge Base', service: 'bedrock' },
@@ -457,17 +482,14 @@ const DEFAULT_NODES: DrawIONode[] = [
   { id: 'neptune',      type: 'service', x: 840, y: 560, label: 'Neptune Graph',           service: 'neptune' },
   { id: 'student_info', type: 'service', x: 760, y: 680, label: 'Student Information',    service: 'dynamodb' },
 
-  // ── Outside Tools (right side) ─────────────────────────────────────────────
   { id: 'career_res',   type: 'service', x: 1020, y: 300, label: 'career resources', service: 's3' },
   { id: 'job_postings', type: 'service', x: 1020, y: 550, label: 'Job Postings',     service: 's3' },
 
-  // ── Job Search Batch Process ───────────────────────────────────────────────
   { id: 'lambda_pq', type: 'service', x: 170, y: 870,  label: 'Lambda', sublabel: 'Process Queue',      service: 'lambda' },
   { id: 'sqs',       type: 'service', x: 170, y: 970,  label: 'Amazon SQS',                              service: 'sqs' },
   { id: 'lambda_q',  type: 'service', x: 55,  y: 970,  label: 'Lambda', sublabel: 'Add to Queue',       service: 'lambda' },
   { id: 'eb1',       type: 'service', x: 55,  y: 1070, label: 'EventBridge', sublabel: 'trigger 1am everyday (Time Configurable)', service: 'eventbridge' },
 
-  // ── Communication Batch Process ────────────────────────────────────────────
   { id: 'lambda_dn', type: 'service', x: 490, y: 870,  label: 'Lambda', sublabel: 'Send Daily Notifications', service: 'lambda' },
   { id: 'ses',       type: 'service', x: 680, y: 850,  label: 'Simple Email Service',                    service: 'sns' },
   { id: 'pinpoint',  type: 'service', x: 680, y: 950,  label: 'End User Messaging',                      service: 'sns' },
@@ -475,7 +497,6 @@ const DEFAULT_NODES: DrawIONode[] = [
 ];
 
 const DEFAULT_EDGES: DrawIOEdge[] = [
-  // Live Search
   { from: 'users',    to: 'amplify' },
   { from: 'amplify',  to: 'lambda1',   label: 'Save Resume' },
   { from: 'amplify',  to: 'lambda2',   label: 'S3 Path' },
@@ -486,36 +507,29 @@ const DEFAULT_EDGES: DrawIOEdge[] = [
   { from: 'amplify',  to: 'lambda4' },
   { from: 'lambda4',  to: 'routing' },
 
-  // Agentcore routing
   { from: 'routing',  to: 'career' },
   { from: 'routing',  to: 'jobsearch' },
   { from: 'routing',  to: 'memory' },
   { from: 'routing',  to: 'observability' },
 
-  // Tools connections
   { from: 'career',      to: 'bedrock_kb' },
   { from: 'jobsearch',   to: 'graphrag' },
   { from: 'bedrock_kb',  to: 's3_vector' },
   { from: 'graphrag',    to: 'neptune' },
 
-  // Right-side external nodes
   { from: 'career',      to: 'career_res' },
   { from: 'neptune',     to: 'job_postings' },
 
-  // Internet (dashed — external traffic into Tools)
   { from: 'internet',    to: 'bedrock_kb', dashed: true },
 
-  // Student Information (shared store)
   { from: 'jobsearch',   to: 'student_info' },
   { from: 'lambda_pq',   to: 'student_info' },
   { from: 'lambda_dn',   to: 'student_info' },
 
-  // Job Search Batch
   { from: 'eb1',       to: 'lambda_q' },
   { from: 'lambda_q',  to: 'sqs' },
   { from: 'sqs',       to: 'lambda_pq' },
 
-  // Communication Batch
   { from: 'eb2',       to: 'lambda_dn' },
   { from: 'lambda_dn', to: 'ses' },
   { from: 'lambda_dn', to: 'pinpoint' },
@@ -523,14 +537,12 @@ const DEFAULT_EDGES: DrawIOEdge[] = [
 
 /* ── Backward Compatibility Converters ──────────────────────────────────────── */
 
-/** Maps a ForgeArchNode to an AWSServiceId, using terraformResource for precision. */
 function mapForgeNodeToService(node: ForgeArchNode): AWSServiceId {
-  // Exact terraform resource type takes priority over the coarse `type` field
   const tfMap: Partial<Record<string, AWSServiceId>> = {
     aws_lambda_function: 'lambda',
     aws_apigatewayv2_api: 'apigateway',
     aws_api_gateway_rest_api: 'apigateway',
-    aws_elasticache_cluster: 'generic',   // ElastiCache not in AWSServiceId — use generic
+    aws_elasticache_cluster: 'generic',
     aws_elasticache_replication_group: 'generic',
     aws_db_instance: 'rds',
     aws_rds_cluster: 'rds',
@@ -539,7 +551,12 @@ function mapForgeNodeToService(node: ForgeArchNode): AWSServiceId {
     aws_sns_topic: 'sns',
     aws_cloudfront_distribution: 'cloudfront',
     aws_cognito_user_pool: 'cognito',
-    aws_secretsmanager_secret: 'generic',
+    aws_secretsmanager_secret: 'secretsmanager',
+    aws_cloudwatch_metric_alarm: 'cloudwatch',
+    aws_cloudwatch_log_group: 'cloudwatch',
+    aws_xray_group: 'xray',
+    aws_iam_role: 'iam',
+    aws_iam_policy: 'iam',
     aws_dynamodb_table: 'dynamodb',
     aws_ecs_service: 'ecs',
     aws_ecs_cluster: 'ecs',
@@ -558,7 +575,6 @@ function mapForgeNodeToService(node: ForgeArchNode): AWSServiceId {
     return tfMap[node.terraformResource]!;
   }
 
-  // Fall back to coarse type mapping
   const typeMap: Record<ForgeArchNode['type'], AWSServiceId> = {
     compute: 'lambda',
     storage: 's3',
@@ -570,12 +586,85 @@ function mapForgeNodeToService(node: ForgeArchNode): AWSServiceId {
   return typeMap[node.type] ?? 'generic';
 }
 
-export function convertForgeNodes(forgeNodes: ForgeArchNode[]): DrawIONode[] {
-  return forgeNodes.map((n, i) => ({
+export function convertForgeNodes(
+  forgeNodes: ForgeArchNode[],
+  forgeEdges?: ForgeArchEdge[],
+): DrawIONode[] {
+  const needsLayout = forgeNodes.every((n) => !n.x && !n.y);
+
+  if (!needsLayout || !forgeEdges || forgeEdges.length === 0) {
+    return forgeNodes.map((n, i) => ({
+      id: n.id,
+      type: 'service' as const,
+      x: n.x ?? (i % 4) * 200 + 60,
+      y: n.y ?? Math.floor(i / 4) * 180 + 60,
+      label: n.label,
+      sublabel: n.sublabel,
+      service: mapForgeNodeToService(n),
+    }));
+  }
+
+  const inDegree = new Map<string, number>();
+  const outEdges = new Map<string, string[]>();
+  for (const n of forgeNodes) {
+    inDegree.set(n.id, 0);
+    outEdges.set(n.id, []);
+  }
+  for (const e of forgeEdges) {
+    inDegree.set(e.to, (inDegree.get(e.to) ?? 0) + 1);
+    outEdges.get(e.from)?.push(e.to);
+  }
+
+  const layer = new Map<string, number>();
+  const queue = forgeNodes
+    .filter((n) => (inDegree.get(n.id) ?? 0) === 0)
+    .map((n) => n.id);
+  queue.forEach((id) => layer.set(id, 0));
+
+  const visited = new Set<string>(queue);
+  let qi = 0;
+  while (qi < queue.length) {
+    const cur = queue[qi++];
+    for (const next of outEdges.get(cur) ?? []) {
+      layer.set(next, Math.max(layer.get(next) ?? 0, (layer.get(cur) ?? 0) + 1));
+      if (!visited.has(next)) {
+        visited.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  for (const n of forgeNodes) {
+    if (!layer.has(n.id)) layer.set(n.id, 0);
+  }
+
+  const byLayer = new Map<number, string[]>();
+  for (const [id, l] of layer) {
+    if (!byLayer.has(l)) byLayer.set(l, []);
+    byLayer.get(l)!.push(id);
+  }
+
+  const LAYER_GAP_X = 220;
+  const NODE_GAP_Y = 160;
+  const PAD_X = 80;
+  const PAD_Y = 80;
+
+  const posMap = new Map<string, { x: number; y: number }>();
+  const maxLayer = Math.max(...Array.from(layer.values()));
+
+  for (const [l, ids] of byLayer) {
+    const x = PAD_X + l * LAYER_GAP_X;
+    ids.forEach((id, i) => {
+      const totalH = ids.length * NODE_GAP_Y;
+      const startY = PAD_Y + (maxLayer > 0 ? Math.max(0, (400 - totalH) / 2) : 0);
+      posMap.set(id, { x, y: startY + i * NODE_GAP_Y });
+    });
+  }
+
+  return forgeNodes.map((n) => ({
     id: n.id,
     type: 'service' as const,
-    x: n.x ?? (i % 4) * 200 + 60,
-    y: n.y ?? Math.floor(i / 4) * 180 + 60,
+    x: posMap.get(n.id)?.x ?? 60,
+    y: posMap.get(n.id)?.y ?? 60,
     label: n.label,
     sublabel: n.sublabel,
     service: mapForgeNodeToService(n),
@@ -589,13 +678,48 @@ export function convertForgeEdges(forgeEdges: ForgeArchEdge[]): DrawIOEdge[] {
   }));
 }
 
+/* ── Coordinate helpers ──────────────────────────────────────────────────────── */
+
+function svgPoint(
+  clientX: number,
+  clientY: number,
+  container: HTMLDivElement,
+  transform: { x: number; y: number; scale: number },
+): { x: number; y: number } {
+  const rect = container.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left - transform.x) / transform.scale,
+    y: (clientY - rect.top - transform.y) / transform.scale,
+  };
+}
+
+function getNodeEdgePoint(
+  nx: number,
+  ny: number,
+  targetX: number,
+  targetY: number,
+  iconSize: number,
+): [number, number] {
+  const cx = nx + iconSize / 2;
+  const cy = ny + iconSize / 2;
+  const r = iconSize / 2 + 4;
+  const dx = targetX - cx;
+  const dy = targetY - cy;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  return [cx + (dx / dist) * r, cy + (dy / dist) * r];
+}
+
 /* ── Helper ──────────────────────────────────────────────────────────────────── */
 
 function hexToRgba(hex: string, alpha: number): string {
   const clean = hex.replace('#', '');
-  const full = clean.length === 3
-    ? clean.split('').map((c) => c + c).join('')
-    : clean;
+  const full =
+    clean.length === 3
+      ? clean
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : clean;
   const r = parseInt(full.slice(0, 2), 16);
   const g = parseInt(full.slice(2, 4), 16);
   const b = parseInt(full.slice(4, 6), 16);
@@ -637,7 +761,7 @@ function NodeTooltip({ state }: { state: TooltipState }) {
         <span
           style={{
             background: serviceConf.bg,
-            borderRadius: serviceConf.shape === 'circle' ? '50%' : 4,
+            borderRadius: 4,
             width: 20,
             height: 20,
             display: 'flex',
@@ -684,7 +808,6 @@ function ConfigPanel({ node, onClose }: ConfigPanelProps) {
   const serviceConf = AWS_SERVICE_CONFIG[service];
   const configData = SERVICE_CONFIG_DATA[service];
 
-  // Merge node-level config overrides with defaults; overrides win on duplicate keys
   const configPropsMap = new Map<string, string>(
     (configData?.configProps ?? []).map(({ key, value }) => [key, value]),
   );
@@ -722,7 +845,6 @@ function ConfigPanel({ node, onClose }: ConfigPanelProps) {
         overflow: 'hidden',
       }}
     >
-      {/* Header */}
       <div
         style={{
           padding: '16px 16px 12px',
@@ -737,7 +859,7 @@ function ConfigPanel({ node, onClose }: ConfigPanelProps) {
                 width: 36,
                 height: 36,
                 background: serviceConf.bg,
-                borderRadius: serviceConf.shape === 'circle' ? '50%' : 8,
+                borderRadius: 8,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -777,7 +899,6 @@ function ConfigPanel({ node, onClose }: ConfigPanelProps) {
           </button>
         </div>
 
-        {/* Category + Tier badges */}
         <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
           {configData?.category && (
             <span
@@ -812,17 +933,13 @@ function ConfigPanel({ node, onClose }: ConfigPanelProps) {
         </div>
       </div>
 
-      {/* Scrollable body */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
-
-        {/* Description */}
         {configData?.description && (
           <p style={{ color: '#aaaacc', fontSize: 12, lineHeight: 1.5, margin: '0 0 16px' }}>
             {node.description ?? configData.description}
           </p>
         )}
 
-        {/* Config Properties */}
         {configProps.length > 0 && (
           <section style={{ marginBottom: 18 }}>
             <h4 style={{ color: '#888', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' }}>
@@ -870,7 +987,6 @@ function ConfigPanel({ node, onClose }: ConfigPanelProps) {
           </section>
         )}
 
-        {/* Use Cases */}
         {configData?.useCases && configData.useCases.length > 0 && (
           <section style={{ marginBottom: 18 }}>
             <h4 style={{ color: '#888', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' }}>
@@ -906,7 +1022,6 @@ function ConfigPanel({ node, onClose }: ConfigPanelProps) {
           </section>
         )}
 
-        {/* Node ID (useful for debugging / referencing) */}
         <section>
           <h4 style={{ color: '#888', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' }}>
             Node ID
@@ -927,7 +1042,6 @@ function ConfigPanel({ node, onClose }: ConfigPanelProps) {
         </section>
       </div>
 
-      {/* Footer */}
       {configData?.docsUrl && (
         <div style={{ padding: '10px 16px', borderTop: '1px solid #ffffff10' }}>
           <a
@@ -999,26 +1113,49 @@ function GroupContainer({ node }: { node: DrawIONode }) {
 
 interface ServiceNodeProps {
   node: DrawIONode;
+  /** Live x position (may differ from node.x when dragged) */
+  posX: number;
+  /** Live y position (may differ from node.y when dragged) */
+  posY: number;
   iconSize: number;
   isSelected: boolean;
   onSelect: (node: DrawIONode) => void;
   onHover: (node: DrawIONode, x: number, y: number) => void;
   onLeave: () => void;
+  onNodeMouseDown: (nodeId: string, e: React.MouseEvent) => void;
 }
 
-function ServiceNode({ node, iconSize, isSelected, onSelect, onHover, onLeave }: ServiceNodeProps) {
-  const cx = node.x + iconSize / 2;
+function ServiceNode({
+  node,
+  posX,
+  posY,
+  iconSize,
+  isSelected,
+  onSelect,
+  onHover,
+  onLeave,
+  onNodeMouseDown,
+}: ServiceNodeProps) {
+  const cx = posX + iconSize / 2;
 
   if (node.type === 'user') {
-    const icon = AWS_ICONS.users;
-    const scale = iconSize / 48;
+    const icon = AWS_ICONS['users'];
+    const iconOffsetX = posX + 10;
+    const iconOffsetY = posY + 10;
+    const iconInnerSize = iconSize - 20;
+    const vbParts = icon.viewBox.split(' ').slice(2).map(Number);
+    const vbW = vbParts[0] ?? 80;
+    const vbH = vbParts[1] ?? 80;
+    const gScale = iconInnerSize / Math.max(vbW, vbH);
+
     return (
       <g
         role="button"
         aria-label={node.label}
         tabIndex={0}
-        style={{ cursor: 'pointer' }}
+        style={{ cursor: 'grab' }}
         onClick={() => onSelect(node)}
+        onMouseDown={(e) => onNodeMouseDown(node.id, e)}
         onMouseEnter={(e) => onHover(node, e.clientX, e.clientY)}
         onMouseMove={(e) => onHover(node, e.clientX, e.clientY)}
         onMouseLeave={onLeave}
@@ -1027,7 +1164,7 @@ function ServiceNode({ node, iconSize, isSelected, onSelect, onHover, onLeave }:
         {isSelected && (
           <circle
             cx={cx}
-            cy={node.y + iconSize / 2}
+            cy={posY + iconSize / 2}
             r={iconSize / 2 + 6}
             fill="none"
             stroke="#8C4FFF"
@@ -1035,18 +1172,41 @@ function ServiceNode({ node, iconSize, isSelected, onSelect, onHover, onLeave }:
             strokeDasharray="4,3"
           />
         )}
-        <g transform={`translate(${node.x}, ${node.y}) scale(${scale})`}>
-          <g transform={icon.glyphTransform}>
-            <path d={icon.path} fill="#555555" />
-          </g>
+        <rect
+          x={posX}
+          y={posY}
+          width={iconSize}
+          height={iconSize}
+          rx={10}
+          fill="#e8e8f0"
+        />
+        <rect
+          x={posX + 8}
+          y={posY + 8}
+          width={iconSize - 16}
+          height={iconSize - 16}
+          rx={6}
+          fill="white"
+          fillOpacity={0.95}
+        />
+        <g transform={`translate(${iconOffsetX}, ${iconOffsetY}) scale(${gScale})`}>
+          <path
+            d={icon.path}
+            fill="none"
+            stroke="#555555"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         </g>
         <text
           x={cx}
-          y={node.y + iconSize + 14}
+          y={posY + iconSize + 14}
           textAnchor="middle"
           fill="#222"
           fontSize={11}
           fontFamily="Arial, sans-serif"
+          fontWeight="600"
         >
           {node.label}
         </text>
@@ -1056,24 +1216,34 @@ function ServiceNode({ node, iconSize, isSelected, onSelect, onHover, onLeave }:
 
   const service = node.service ?? 'generic';
   const config = AWS_SERVICE_CONFIG[service];
+  const iconKey = SERVICE_TO_ICON[service] ?? 'generic';
+  const icon = AWS_ICONS[iconKey];
+
+  const iconOffsetX = posX + 10;
+  const iconOffsetY = posY + 10;
+  const iconInnerSize = iconSize - 20;
+  const vbParts = icon.viewBox.split(' ').slice(2).map(Number);
+  const vbW = vbParts[0] ?? 80;
+  const vbH = vbParts[1] ?? 80;
+  const gScale = iconInnerSize / Math.max(vbW, vbH);
 
   return (
     <g
       role="button"
       aria-label={`${node.label}${node.sublabel ? ` — ${node.sublabel}` : ''}`}
       tabIndex={0}
-      style={{ cursor: 'pointer' }}
+      style={{ cursor: 'grab' }}
       onClick={() => onSelect(node)}
+      onMouseDown={(e) => onNodeMouseDown(node.id, e)}
       onMouseEnter={(e) => onHover(node, e.clientX, e.clientY)}
       onMouseMove={(e) => onHover(node, e.clientX, e.clientY)}
       onMouseLeave={onLeave}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onSelect(node); }}
     >
-      {/* Selection ring */}
       {isSelected && (
         <rect
-          x={node.x - 5}
-          y={node.y - 5}
+          x={posX - 5}
+          y={posY - 5}
           width={iconSize + 10}
           height={iconSize + 10}
           rx={14}
@@ -1084,52 +1254,40 @@ function ServiceNode({ node, iconSize, isSelected, onSelect, onHover, onLeave }:
           opacity={0.9}
         />
       )}
-      {/* Outer colored badge (AWS category color) */}
-      {config.shape === 'circle' ? (
-        <circle
-          cx={cx}
-          cy={node.y + iconSize / 2}
-          r={iconSize / 2}
-          fill={config.bg}
+      {/* Outer colored badge */}
+      <rect
+        x={posX}
+        y={posY}
+        width={iconSize}
+        height={iconSize}
+        rx={10}
+        fill={config.bg}
+      />
+      {/* Inner white badge */}
+      <rect
+        x={posX + 8}
+        y={posY + 8}
+        width={iconSize - 16}
+        height={iconSize - 16}
+        rx={6}
+        fill="white"
+        fillOpacity={0.95}
+      />
+      {/* Icon glyph scaled to inner area */}
+      <g transform={`translate(${iconOffsetX}, ${iconOffsetY}) scale(${gScale})`}>
+        <path
+          d={icon.path}
+          fill="none"
+          stroke={config.bg}
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
         />
-      ) : (
-        <rect
-          x={node.x}
-          y={node.y}
-          width={iconSize}
-          height={iconSize}
-          rx={10}
-          fill={config.bg}
-        />
-      )}
-      {/* Inner white badge (AWS icon style) */}
-      {config.shape !== 'circle' && (
-        <rect
-          x={node.x + 8}
-          y={node.y + 8}
-          width={iconSize - 16}
-          height={iconSize - 16}
-          rx={6}
-          fill="white"
-          fillOpacity={0.92}
-        />
-      )}
-      {/* Service abbreviation text */}
-      <text
-        x={cx}
-        y={node.y + iconSize / 2 + 5}
-        textAnchor="middle"
-        fill={config.shape === 'circle' ? 'white' : config.bg}
-        fontSize={config.abbr.length > 2 ? 11 : 13}
-        fontWeight="800"
-        fontFamily="Arial, sans-serif"
-      >
-        {config.abbr}
-      </text>
+      </g>
       {/* Primary label below icon */}
       <text
         x={cx}
-        y={node.y + iconSize + 16}
+        y={posY + iconSize + 16}
         textAnchor="middle"
         fill="#1a1a2e"
         fontSize={11}
@@ -1142,18 +1300,20 @@ function ServiceNode({ node, iconSize, isSelected, onSelect, onHover, onLeave }:
   );
 }
 
-function DiagramEdge({
-  edge,
-  nodeMap,
-  iconSize,
-}: {
+interface DiagramEdgeProps {
   edge: DrawIOEdge;
-  nodeMap: Map<string, DrawIONode>;
+  liveNodeMap: Map<string, DrawIONode>;
+  allEdges: DrawIOEdge[];
   iconSize: number;
-}) {
-  const fromNode = nodeMap.get(edge.from);
-  const toNode = nodeMap.get(edge.to);
+}
+
+function DiagramEdge({ edge, liveNodeMap, allEdges, iconSize }: DiagramEdgeProps) {
+  const fromNode = liveNodeMap.get(edge.from);
+  const toNode = liveNodeMap.get(edge.to);
   if (!fromNode || !toNode) return null;
+
+  const edgeSet = new Set(allEdges.map((e) => `${e.from}→${e.to}`));
+  const bidirectional = edgeSet.has(`${edge.to}→${edge.from}`);
 
   const getCenter = (n: DrawIONode): [number, number] => {
     if (n.type === 'group') {
@@ -1162,32 +1322,90 @@ function DiagramEdge({
     return [n.x + iconSize / 2, n.y + iconSize / 2];
   };
 
-  const [x1, y1] = getCenter(fromNode);
-  const [x2, y2] = getCenter(toNode);
+  const [cx1, cy1] = getCenter(fromNode);
+  const [cx2, cy2] = getCenter(toNode);
+
+  // Shorten to node boundary
+  const [x1, y1] = fromNode.type === 'group'
+    ? [cx1, cy1]
+    : getNodeEdgePoint(fromNode.x, fromNode.y, cx2, cy2, iconSize);
+  const [x2, y2] = toNode.type === 'group'
+    ? [cx2, cy2]
+    : getNodeEdgePoint(toNode.x, toNode.y, cx1, cy1, iconSize);
+
   const my = (y1 + y2) / 2;
   const mx = (x1 + x2) / 2;
   const d = `M ${x1},${y1} C ${x1},${my} ${x2},${my} ${x2},${y2}`;
 
+  if (edge.dashed) {
+    return (
+      <g>
+        <defs>
+          <marker id="arrow-end-dashed" markerWidth={8} markerHeight={6} refX={7} refY={3} orient="auto">
+            <polygon points="0 0, 8 3, 0 6" fill="#888" />
+          </marker>
+        </defs>
+        <path
+          d={d}
+          stroke="#aaa"
+          strokeWidth={1}
+          fill="none"
+          strokeDasharray="5,4"
+          opacity={0.5}
+          markerEnd="url(#arrow-end-dashed)"
+          strokeLinecap="round"
+        />
+        <circle r={3} fill="#aaa" opacity={0.6}>
+          <animateMotion dur="2.2s" repeatCount="indefinite" path={d} />
+        </circle>
+        {edge.label && (
+          <text x={mx} y={my - 4} textAnchor="middle" fill="#555" fontSize={10} fontFamily="Arial, sans-serif">
+            {edge.label}
+          </text>
+        )}
+      </g>
+    );
+  }
+
   return (
     <g>
+      <defs>
+        <marker id="arrow-start" markerWidth={8} markerHeight={6} refX={1} refY={3} orient="auto">
+          <polygon points="8 0, 0 3, 8 6" fill="#4a9eff" />
+        </marker>
+        <marker id="arrow-end" markerWidth={8} markerHeight={6} refX={7} refY={3} orient="auto">
+          <polygon points="0 0, 8 3, 0 6" fill="#4a9eff" />
+        </marker>
+      </defs>
       <path
         d={d}
-        stroke={edge.dashed ? '#666' : '#333'}
+        stroke="#4a9eff"
         strokeWidth={1.5}
         fill="none"
-        strokeDasharray={edge.dashed ? '5,4' : undefined}
-        markerEnd={edge.dashed ? 'url(#arrow-dashed)' : 'url(#arrow-dark)'}
+        opacity={0.6}
+        markerEnd="url(#arrow-end)"
+        markerStart={bidirectional ? 'url(#arrow-start)' : undefined}
         strokeLinecap="round"
       />
+      {/* Forward flow dot */}
+      <circle r={3} fill="#4a9eff" opacity={0.8}>
+        <animateMotion dur="1.8s" repeatCount="indefinite" path={d} />
+      </circle>
+      {/* Reverse flow dot for bidirectional edges */}
+      {bidirectional && (
+        <circle r={3} fill="#4a9eff" opacity={0.8}>
+          <animateMotion
+            dur="1.8s"
+            repeatCount="indefinite"
+            path={d}
+            keyTimes="0;1"
+            keyPoints="1;0"
+            calcMode="linear"
+          />
+        </circle>
+      )}
       {edge.label && (
-        <text
-          x={mx}
-          y={my - 4}
-          textAnchor="middle"
-          fill="#555"
-          fontSize={10}
-          fontFamily="Arial, sans-serif"
-        >
+        <text x={mx} y={my - 4} textAnchor="middle" fill="#555" fontSize={10} fontFamily="Arial, sans-serif">
           {edge.label}
         </text>
       )}
@@ -1222,7 +1440,6 @@ export default function ArchDiagram({
   const nodes = propNodes ?? DEFAULT_NODES;
   const edges = propEdges ?? DEFAULT_EDGES;
 
-  // Controlled mode: parent owns selection; uncontrolled: internal state + ConfigPanel
   const isControlled = onNodeSelect !== undefined;
 
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null);
@@ -1232,12 +1449,9 @@ export default function ArchDiagram({
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Clear pending tooltip timer on unmount to prevent state updates on unmounted component
   useEffect(() => {
     return () => {
-      if (tooltipTimerRef.current) {
-        clearTimeout(tooltipTimerRef.current);
-      }
+      if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
     };
   }, []);
 
@@ -1246,23 +1460,59 @@ export default function ArchDiagram({
 
   const [transform, setTransform] = useState({ x: 0, y: 0, scale: 1 });
   const [isDragging, setIsDragging] = useState(false);
+
+  // Canvas pan refs
   const dragStartRef = useRef<{ mx: number; my: number; tx: number; ty: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Per-node drag state
+  const [nodePositions, setNodePositions] = useState<Map<string, { x: number; y: number }>>(
+    () => new Map(),
+  );
+  const draggingNodeId = useRef<string | null>(null);
+  const dragNodeStart = useRef<{ mx: number; my: number; nx: number; ny: number } | null>(null);
+
+  // Sync nodePositions when nodes prop changes
+  useEffect(() => {
+    setNodePositions((prev) => {
+      const next = new Map(prev);
+      for (const n of nodes) {
+        if (!next.has(n.id)) {
+          next.set(n.id, { x: n.x, y: n.y });
+        }
+      }
+      // Remove stale entries
+      for (const id of next.keys()) {
+        if (!nodes.find((n) => n.id === id)) next.delete(id);
+      }
+      return next;
+    });
+  }, [nodes]);
+
+  // Build a liveNodeMap that merges dragged positions into node data
+  const liveNodeMap = new Map(
+    nodes.map((n) => {
+      const pos = nodePositions.get(n.id);
+      return [n.id, pos ? { ...n, x: pos.x, y: pos.y } : n];
+    }),
+  );
+
   const selectedNodeId = isControlled ? (controlledSelectedNodeId ?? null) : internalSelectedId;
-  // ConfigPanel only shown in uncontrolled mode (parent provides its own inspector)
   const selectedNode = !isControlled && selectedNodeId
     ? nodes.find((n) => n.id === selectedNodeId) ?? null
     : null;
 
-  const handleSelect = useCallback((node: DrawIONode) => {
-    if (isControlled) {
-      onNodeSelect(node.id === (controlledSelectedNodeId ?? null) ? null : node.id);
-    } else {
-      setInternalSelectedId((prev) => (prev === node.id ? null : node.id));
-    }
-    setTooltip(null);
-  }, [isControlled, onNodeSelect, controlledSelectedNodeId]);
+  const handleSelect = useCallback(
+    (node: DrawIONode) => {
+      if (isControlled) {
+        onNodeSelect(node.id === (controlledSelectedNodeId ?? null) ? null : node.id);
+      } else {
+        setInternalSelectedId((prev) => (prev === node.id ? null : node.id));
+      }
+      setTooltip(null);
+    },
+    [isControlled, onNodeSelect, controlledSelectedNodeId],
+  );
 
   const handleHover = useCallback((node: DrawIONode, x: number, y: number) => {
     if (tooltipTimerRef.current) clearTimeout(tooltipTimerRef.current);
@@ -1294,55 +1544,94 @@ export default function ArchDiagram({
     });
   }, []);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    // Only initiate pan on direct container clicks (not on nodes)
-    if ((e.target as Element).closest('[role="button"]')) return;
-    setIsDragging(true);
-    dragStartRef.current = { mx: e.clientX, my: e.clientY, tx: transform.x, ty: transform.y };
-  }, [transform.x, transform.y]);
+  const handleNodeMouseDown = useCallback(
+    (nodeId: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!containerRef.current) return;
+      const pt = svgPoint(e.clientX, e.clientY, containerRef.current, transform);
+      const pos = nodePositions.get(nodeId);
+      draggingNodeId.current = nodeId;
+      dragNodeStart.current = {
+        mx: pt.x,
+        my: pt.y,
+        nx: pos?.x ?? 0,
+        ny: pos?.y ?? 0,
+      };
+    },
+    [transform, nodePositions],
+  );
 
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDragging || !dragStartRef.current) return;
-    const dx = e.clientX - dragStartRef.current.mx;
-    const dy = e.clientY - dragStartRef.current.my;
-    setTransform((prev) => ({
-      ...prev,
-      x: dragStartRef.current!.tx + dx,
-      y: dragStartRef.current!.ty + dy,
-    }));
-  }, [isDragging]);
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if ((e.target as Element).closest('[role="button"]')) return;
+      if (draggingNodeId.current) return;
+      setIsDragging(true);
+      dragStartRef.current = { mx: e.clientX, my: e.clientY, tx: transform.x, ty: transform.y };
+    },
+    [transform.x, transform.y],
+  );
+
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      // Node dragging takes priority
+      if (draggingNodeId.current && dragNodeStart.current && containerRef.current) {
+        const pt = svgPoint(e.clientX, e.clientY, containerRef.current, transform);
+        const dx = pt.x - dragNodeStart.current.mx;
+        const dy = pt.y - dragNodeStart.current.my;
+        const newX = dragNodeStart.current.nx + dx;
+        const newY = dragNodeStart.current.ny + dy;
+        const id = draggingNodeId.current;
+        setNodePositions((prev) => {
+          const next = new Map(prev);
+          next.set(id, { x: newX, y: newY });
+          return next;
+        });
+        return;
+      }
+      // Canvas pan
+      if (!isDragging || !dragStartRef.current) return;
+      const dx = e.clientX - dragStartRef.current.mx;
+      const dy = e.clientY - dragStartRef.current.my;
+      setTransform((prev) => ({
+        ...prev,
+        x: dragStartRef.current!.tx + dx,
+        y: dragStartRef.current!.ty + dy,
+      }));
+    },
+    [isDragging, transform],
+  );
 
   const handleMouseUp = useCallback(() => {
+    draggingNodeId.current = null;
+    dragNodeStart.current = null;
     setIsDragging(false);
     dragStartRef.current = null;
   }, []);
 
   const handleMouseLeaveContainer = useCallback(() => {
+    draggingNodeId.current = null;
+    dragNodeStart.current = null;
     setIsDragging(false);
     dragStartRef.current = null;
   }, []);
 
-  const serviceNodes = nodes.filter(
-    (n) => n.type !== 'group' && n.type !== 'sectionLabel',
-  );
+  const serviceNodes = nodes.filter((n) => n.type !== 'group' && n.type !== 'sectionLabel');
 
   const maxX =
     serviceNodes.length > 0
-      ? Math.max(...serviceNodes.map((n) => n.x + ICON_SIZE))
+      ? Math.max(...serviceNodes.map((n) => (nodePositions.get(n.id)?.x ?? n.x) + ICON_SIZE))
       : 800;
 
   const allNodes = nodes.filter((n) => n.type !== 'sectionLabel');
   const maxY =
     allNodes.length > 0
-      ? Math.max(
-          ...allNodes.map((n) => n.y + (n.height ?? ICON_SIZE) + 30),
-        )
+      ? Math.max(...allNodes.map((n) => (nodePositions.get(n.id)?.y ?? n.y) + (n.height ?? ICON_SIZE) + 30))
       : 600;
 
   const svgWidth = Math.max(maxX + PAD, 800);
   const svgHeight = Math.max(maxY + PAD, 600);
 
-  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+  const staticNodeMap = new Map(nodes.map((n) => [n.id, n]));
   const ariaLabel = [
     'AWS architecture diagram.',
     nodes
@@ -1352,14 +1641,17 @@ export default function ArchDiagram({
     'Connections:',
     edges
       .map((e) => {
-        const from = nodeMap.get(e.from)?.label ?? e.from;
-        const to = nodeMap.get(e.to)?.label ?? e.to;
+        const from = staticNodeMap.get(e.from)?.label ?? e.from;
+        const to = staticNodeMap.get(e.to)?.label ?? e.to;
         return `${from} to ${to}`;
       })
       .join(', '),
   ]
     .filter(Boolean)
     .join(' ');
+
+  const isDraggingNode = !!draggingNodeId.current;
+  const cursorStyle = isDraggingNode ? 'grabbing' : isDragging ? 'grabbing' : 'grab';
 
   return (
     <div
@@ -1375,7 +1667,6 @@ export default function ArchDiagram({
       role="img"
       aria-label={ariaLabel}
     >
-      {/* SVG diagram — pan/zoom canvas */}
       <div
         ref={containerRef}
         style={{
@@ -1383,7 +1674,7 @@ export default function ArchDiagram({
           overflow: 'hidden',
           minWidth: 0,
           transition: 'flex 0.25s ease',
-          cursor: isDragging ? 'grabbing' : 'grab',
+          cursor: cursorStyle,
           position: 'relative',
         }}
         onWheel={handleWheel}
@@ -1400,29 +1691,6 @@ export default function ArchDiagram({
           aria-hidden="true"
           preserveAspectRatio="xMidYMid meet"
         >
-          <defs>
-            <marker
-              id="arrow-dark"
-              markerWidth={8}
-              markerHeight={6}
-              refX={7}
-              refY={3}
-              orient="auto"
-            >
-              <polygon points="0 0, 8 3, 0 6" fill="#333" />
-            </marker>
-            <marker
-              id="arrow-dashed"
-              markerWidth={8}
-              markerHeight={6}
-              refX={7}
-              refY={3}
-              orient="auto"
-            >
-              <polygon points="0 0, 8 3, 0 6" fill="#666" />
-            </marker>
-          </defs>
-
           <g transform={`translate(${transform.x}, ${transform.y}) scale(${transform.scale})`}>
             {/* Layer 1: Group containers */}
             {nodes
@@ -1431,12 +1699,13 @@ export default function ArchDiagram({
                 <GroupContainer key={node.id} node={node} />
               ))}
 
-            {/* Layer 2: Edges */}
+            {/* Layer 2: Edges — use liveNodeMap for dragged positions */}
             {edges.map((edge, i) => (
               <DiagramEdge
                 key={`${edge.from}-${edge.to}-${i}`}
                 edge={edge}
-                nodeMap={nodeMap}
+                liveNodeMap={liveNodeMap}
+                allEdges={edges}
                 iconSize={ICON_SIZE}
               />
             ))}
@@ -1444,17 +1713,23 @@ export default function ArchDiagram({
             {/* Layer 3: Service and user nodes */}
             {nodes
               .filter((n) => n.type === 'service' || n.type === 'user')
-              .map((node) => (
-                <ServiceNode
-                  key={node.id}
-                  node={node}
-                  iconSize={ICON_SIZE}
-                  isSelected={node.id === selectedNodeId}
-                  onSelect={handleSelect}
-                  onHover={handleHover}
-                  onLeave={handleLeave}
-                />
-              ))}
+              .map((node) => {
+                const pos = nodePositions.get(node.id) ?? { x: node.x, y: node.y };
+                return (
+                  <ServiceNode
+                    key={node.id}
+                    node={node}
+                    posX={pos.x}
+                    posY={pos.y}
+                    iconSize={ICON_SIZE}
+                    isSelected={node.id === selectedNodeId}
+                    onSelect={handleSelect}
+                    onHover={handleHover}
+                    onLeave={handleLeave}
+                    onNodeMouseDown={handleNodeMouseDown}
+                  />
+                );
+              })}
 
             {/* Layer 4: Section labels */}
             {nodes
@@ -1520,7 +1795,7 @@ export default function ArchDiagram({
         />
       )}
 
-      {/* Tooltip — portalled to document.body to escape any parent transform/overflow */}
+      {/* Tooltip — portalled to document.body */}
       {mounted && tooltip && !selectedNodeId &&
         createPortal(<NodeTooltip state={tooltip} />, document.body)
       }
