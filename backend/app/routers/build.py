@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
-from typing import Any
 from uuid import uuid4
 
 from bson import ObjectId
@@ -16,8 +16,14 @@ from app.db.mongo import architectures_col, builds_col, projects_col
 from app.routers.agent3 import _build_initial_state, _stream_events
 from app.schemas.build import BuildCommitRequest
 from app.services.github import commit_files, list_repos
+from app.utils.serialization import serialize_doc
 
 router = APIRouter(prefix="/workflows/build", tags=["build"])
+logger = logging.getLogger(__name__)
+
+
+def _sse(data: dict) -> str:
+    return f"data: {json.dumps(data)}\n\n"
 
 # ---------------------------------------------------------------------------
 # Service type normalisation
@@ -136,24 +142,6 @@ def _artifacts_to_files(artifacts: dict) -> list[dict]:
     return files
 
 
-def _serialize_doc(doc: dict) -> dict:
-    """Recursively convert ObjectId / datetime values to strings."""
-    out: dict[str, Any] = {}
-    for k, v in doc.items():
-        if isinstance(v, ObjectId):
-            out[k] = str(v)
-        elif isinstance(v, datetime):
-            out[k] = v.isoformat()
-        elif isinstance(v, dict):
-            out[k] = _serialize_doc(v)
-        elif isinstance(v, list):
-            out[k] = [
-                _serialize_doc(i) if isinstance(i, dict) else i for i in v
-            ]
-        else:
-            out[k] = v
-    return out
-
 
 # ---------------------------------------------------------------------------
 # Routes
@@ -266,8 +254,10 @@ async def start_build(
                         },
                     )
 
-            except Exception:
-                pass
+            except Exception as e:
+                logger.exception("Error processing build SSE event")
+                yield _sse({"phase": "error", "message": "Internal error during build processing"})
+                return
 
             yield sse_event
 
@@ -300,7 +290,7 @@ async def get_build_status(
     if not build_doc:
         raise HTTPException(status_code=404, detail="No build found for project")
 
-    return _serialize_doc(build_doc)
+    return serialize_doc(build_doc)
 
 
 @router.post("/{project_id}/commit")
@@ -320,7 +310,10 @@ async def commit_build(
             status_code=400, detail="GitHub account not connected"
         )
 
-    token = decrypt(user["github_token_encrypted"])
+    try:
+        token = decrypt(user["github_token_encrypted"])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Failed to decrypt GitHub token. Re-connect your GitHub account.")
 
     build_doc = await builds_col().find_one({"_id": ObjectId(body.build_id)})
     if not build_doc:
@@ -385,5 +378,8 @@ async def get_repos(
             status_code=400, detail="GitHub account not connected"
         )
 
-    token = decrypt(user["github_token_encrypted"])
+    try:
+        token = decrypt(user["github_token_encrypted"])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Failed to decrypt GitHub token. Re-connect your GitHub account.")
     return await list_repos(token)

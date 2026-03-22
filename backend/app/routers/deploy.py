@@ -1,8 +1,9 @@
 import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from bson import ObjectId
 
@@ -11,8 +12,10 @@ from app.db.mongo import projects_col, builds_col, deployments_col
 from app.db.encryption import decrypt
 from app.providers.factory import get_provider
 from app.schemas.deploy import DeployRollbackRequest
+from app.utils.serialization import serialize_doc
 
 router = APIRouter(prefix="/workflows/deploy", tags=["deploy"])
+logger = logging.getLogger(__name__)
 
 
 def _sse(data: dict) -> str:
@@ -39,7 +42,7 @@ def _find_cf_template(artifacts: dict) -> str:
 
 
 @router.post("/start/{project_id}")
-async def start_deploy(project_id: str, user=Depends(get_current_user)):
+async def start_deploy(project_id: str, request: Request, user=Depends(get_current_user)):
     project = await projects_col().find_one({"_id": ObjectId(project_id)})
     if not project:
         raise HTTPException(404, "Project not found")
@@ -55,7 +58,10 @@ async def start_deploy(project_id: str, user=Depends(get_current_user)):
     if not project.get("cloud_credentials_encrypted"):
         raise HTTPException(409, "Cloud credentials not configured")
 
-    creds_json = decrypt(project["cloud_credentials_encrypted"])
+    try:
+        creds_json = decrypt(project["cloud_credentials_encrypted"])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Failed to decrypt cloud credentials. Re-enter your credentials.")
     credentials = json.loads(creds_json)
     provider_type = project.get("cloud_provider_type") or credentials.get("provider", "aws")
 
@@ -110,6 +116,10 @@ async def start_deploy(project_id: str, user=Depends(get_current_user)):
             )
 
             while not deploy_task.done():
+                if await request.is_disconnected():
+                    deploy_task.cancel()
+                    logger.info("Client disconnected, cancelled deploy task")
+                    return
                 try:
                     event = await asyncio.wait_for(event_queue.get(), timeout=1.0)
                     yield _sse(event)
@@ -144,12 +154,13 @@ async def start_deploy(project_id: str, user=Depends(get_current_user)):
 
             yield _sse({"type": "log", "line": "✓ Deployment complete"})
 
-        except Exception as e:
+        except Exception:
+            logger.exception("Workflow error in deploy stream")
             await deployments_col().update_one(
                 {"_id": ObjectId(deployment_id)},
                 {"$set": {"status": "failed", "updated_at": datetime.now(timezone.utc)}}
             )
-            yield _sse({"type": "error", "message": str(e)})
+            yield _sse({"type": "error", "message": "An internal error occurred. Please try again."})
 
         yield "data: [DONE]\n\n"
 
@@ -179,7 +190,10 @@ async def rollback_deploy(
     if not project.get("cloud_credentials_encrypted"):
         raise HTTPException(409, "Cloud credentials not configured")
 
-    creds_json = decrypt(project["cloud_credentials_encrypted"])
+    try:
+        creds_json = decrypt(project["cloud_credentials_encrypted"])
+    except Exception:
+        raise HTTPException(status_code=400, detail="Failed to decrypt cloud credentials. Re-enter your credentials.")
     credentials = json.loads(creds_json)
     provider_type = project.get("cloud_provider_type") or credentials.get("provider", "aws")
 
@@ -211,17 +225,4 @@ async def deploy_status(project_id: str, user=Depends(get_current_user)):
     if not deployment:
         raise HTTPException(404, "No deployment found for this project")
 
-    def _serialize(doc: dict) -> dict:
-        result = {}
-        for k, v in doc.items():
-            if isinstance(v, ObjectId):
-                result[k] = str(v)
-            elif isinstance(v, datetime):
-                result[k] = v.isoformat()
-            elif isinstance(v, dict):
-                result[k] = _serialize(v)
-            else:
-                result[k] = v
-        return result
-
-    return _serialize(deployment)
+    return serialize_doc(deployment)
