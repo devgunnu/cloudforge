@@ -4,7 +4,8 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from app.agents.agent3.llm import get_default_llm
+from app.agents.agent3.llm import get_default_llm, get_structured_llm
+from app.agents.agent3.models import TFGeneratorOutput
 from app.agents.agent3.prompts.tf_prompts import tf_generation_system, tf_generation_user
 from app.agents.agent3.state import AgentState
 from app.agents.agent3.utils import safe_json_extract
@@ -26,35 +27,40 @@ def tf_generator_node(state: AgentState) -> dict[str, Any]:
         connections=[dict(c) for c in connections],
     )
 
+    msgs = [SystemMessage(content=system_msg), HumanMessage(content=user_msg)]
+    tf_files: dict[str, str] = {}
+
+    # --- Primary path: structured output (avoids JSON escaping issues) ---
     try:
-        response = get_default_llm().invoke(
-            [SystemMessage(content=system_msg), HumanMessage(content=user_msg)]
-        )
-        data = safe_json_extract(response.content)
-
-        tf_files: dict[str, str] = {
-            f["name"]: f["content"]
-            for f in data.get("files", [])
-            if isinstance(f, dict) and "name" in f and "content" in f
-        }
-
-        if not tf_files:
+        result = get_structured_llm(TFGeneratorOutput).invoke(msgs)
+        plan: TFGeneratorOutput | None = result.get("parsed")
+        if result.get("parsing_error"):
+            raise ValueError(f"structured output parse error: {result['parsing_error']}")
+        if plan and plan.files:
+            tf_files = {f.name: f.content for f in plan.files}
+    except Exception as e:
+        # --- Fallback: raw LLM call + safe_json_extract ---
+        try:
+            response = get_default_llm().invoke(msgs)
+            data = safe_json_extract(response.content)
+            tf_files = {
+                f["name"]: f["content"]
+                for f in data.get("files", [])
+                if isinstance(f, dict) and "name" in f and "content" in f
+            }
+        except Exception as e2:
             return {
                 "current_phase": "error",
-                "pipeline_errors": ["TF generator returned no files — LLM response was empty or malformed"],
+                "pipeline_errors": [f"TF generation failed: {e2}"],
             }
 
-        return {
-            "tf_files": tf_files,
-            "current_phase": "tf_validation",
-        }
-    except ValueError as e:
+    if not tf_files:
         return {
             "current_phase": "error",
-            "pipeline_errors": [f"TF generator JSON parse error: {e}"],
+            "pipeline_errors": ["TF generator returned no files — LLM response was empty or malformed"],
         }
-    except Exception as e:
-        return {
-            "current_phase": "error",
-            "pipeline_errors": [f"TF generation failed: {e}"],
-        }
+
+    return {
+        "tf_files": tf_files,
+        "current_phase": "tf_validation",
+    }

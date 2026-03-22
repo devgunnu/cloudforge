@@ -48,16 +48,13 @@ def test_generator_node(state: CodeGenState) -> dict[str, Any]:
         architecture_overview=state.get("architecture_overview") or "",
     )
 
-    try:
-        response = get_default_llm().invoke(
-            [SystemMessage(content=system_msg), HumanMessage(content=user_msg)]
-        )
-        raw = strip_think_tags(response.content)
-        tests = strip_code_fences(raw)
-        if not tests.strip():
-            tests = raw.strip()
-        if not tests.strip():
-            return {"syntax_errors": ["Test generator returned empty output"]}
-        return {"generated_tests": tests}
-    except Exception as e:
-        return {"syntax_errors": [f"Test generation failed: {e}"]}
+    response = get_default_llm().invoke(
+        [SystemMessage(content=system_msg), HumanMessage(content=user_msg)]
+    )
+    raw = strip_think_tags(response.content)
+    tests = strip_code_fences(raw)
+    if not tests.strip():
+        tests = raw.strip()
+    if not tests.strip():
+        return {"syntax_errors": ["Test generator returned empty output"]}
+    return {"generated_tests": tests}

@@ -1,5 +1,5 @@
 """
-Runs the Agent 3 e2e pipeline against sample_topology.json using real Ollama
+Runs the Agent 3 e2e pipeline against sample_topology.json using OpenRouter
 LLM calls and writes all generated artifacts to:
     %TEMP%/cloudforge-test-output/
 
@@ -85,7 +85,10 @@ def main() -> None:
         topology = json.load(fh)
 
     print(f"Topology : {[s['id'] for s in topology['services']]}")
-    print(f"Model    : {__import__('app.config', fromlist=['settings']).settings.agent3_model}")
+    s = __import__('app.config', fromlist=['settings']).settings
+    model = s.openrouter_model if s.llm_provider == "openrouter" else s.ollama_model
+    print(f"Provider : {s.llm_provider}")
+    print(f"Model    : {model}")
     print(f"Output   : {OUT_DIR}\n")
 
     graph = _graph_mod.compile_graph()

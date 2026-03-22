@@ -100,21 +100,35 @@ def safe_json_extract(text: str) -> Any:
 
     Steps:
     1. Strip <think>...</think> chain-of-thought blocks (Groq 8b).
-    2. Strip markdown code fences.
-    3. Try json.loads() on the raw cleaned content.
-    4. Scan for the first '{' or '[' and parse from there.
-    5. Use regex to find any JSON object/array anywhere in the response.
+    2. Normalize CRLF → LF (prevents fence regex failures on Windows/HTTP responses).
+    3. Strip markdown code fences (full regex match, then partial fallback).
+    4. Try json.loads() on the raw cleaned content.
+    5. Fix double-escaped backslash-quotes (\\") and retry.
+    6. Scan for the first '{' or '[' and parse from there.
+    7. Use regex to find any JSON object/array anywhere in the response.
 
     Raises ValueError if no valid JSON can be found.
     """
     # Step 1: strip chain-of-thought tags first
     text = strip_think_tags(text)
 
-    # Step 2: strip code fences (operates on already-think-stripped text)
+    # Step 2: normalize line endings — CRLF breaks ^/$ anchors in MULTILINE regex
+    text = text.replace('\r\n', '\n').replace('\r', '\n')
+
+    # Step 3: strip code fences (operates on already-think-stripped text)
     clean = text.strip()
     fence_match = _FENCE_RE.search(clean)
     if fence_match:
         clean = fence_match.group(1).rstrip()
+    elif clean.startswith('```'):
+        # Partial fence strip: handle truncated responses where closing ``` is missing
+        first_nl = clean.find('\n')
+        if first_nl >= 0:
+            inner = clean[first_nl + 1:]
+            stripped = inner.rstrip()
+            if stripped.endswith('```'):
+                inner = stripped[:-3].rstrip()
+            clean = inner
 
     # Step 3a: try direct parse on cleaned text
     try:
@@ -129,6 +143,16 @@ def safe_json_extract(text: str) -> Any:
         sanitized = _escape_control_chars_in_strings(clean)
         return json.loads(sanitized)
     except (json.JSONDecodeError, Exception):
+        pass
+
+    # Step 3c: fix double-escaped backslash-quotes (\\" → \").
+    # Models sometimes output \\" inside JSON string values when embedding code/HCL
+    # that contains quotes. In valid JSON, \\" means literal-backslash + close-string,
+    # which breaks parsing. Converting \\" → \" makes the quote an escaped char instead.
+    try:
+        normalized = sanitized.replace('\\\\"', '\\"')
+        return json.loads(normalized)
+    except (json.JSONDecodeError, NameError, Exception):
         pass
 
     # Step 4: scan forward from first '{' or '[', tracking brace depth while

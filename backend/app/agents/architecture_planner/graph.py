@@ -126,24 +126,24 @@ def build_arch_review_subgraph(llm):
 # ---------------------------------------------------------------------------
 
 
-def _build_llm(model_type: str, model_name: str | None):
-    """Instantiate the chat model based on model_type."""
-    if model_type == "anthropic":
-        from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(
-            model=model_name or "claude-opus-4-6",
+def _build_llm(model_name: str | None = None):
+    """Instantiate the chat model based on LLM_PROVIDER setting."""
+    from app.config import settings
+    if settings.llm_provider == "openrouter":
+        from langchain_openrouter import ChatOpenRouter
+        return ChatOpenRouter(
+            model=model_name or settings.openrouter_model,
+            api_key=settings.openrouter_api_key,
             temperature=0,
             max_tokens=8096,
-        )
-    elif model_type == "ollama":
-        from langchain_ollama import ChatOllama
-        return ChatOllama(
-            model=model_name or "llama3.1:8b",
-            temperature=0,
+            timeout=settings.llm_timeout_seconds * 1000,
         )
     else:
-        raise ValueError(
-            f"Unknown model_type '{model_type}'. Use 'anthropic' or 'ollama'."
+        from langchain_ollama import ChatOllama
+        return ChatOllama(
+            model=model_name or settings.ollama_model,
+            base_url=settings.ollama_base_url,
+            temperature=0,
         )
 
 
@@ -160,7 +160,6 @@ def _route_after_accept(state: ArchitecturePlannerState) -> str:
 
 
 def create_graph(
-    model_type: str = "anthropic",
     model_name: str | None = None,
     graph_json_path: str | None = None,
     community_summaries_path: str | None = None,
@@ -170,10 +169,8 @@ def create_graph(
     Build and compile the full architecture planner graph.
 
     Args:
-        model_type: "anthropic" (default) or "ollama"
-        model_name: Override the default model name.
-                    Anthropic default: "claude-opus-4-6"
-                    Ollama default: "llama3.1:8b"
+        model_name: Override the default model (from OPENROUTER_MODEL env var).
+                    Default: "anthropic/claude-haiku-4.5"
         graph_json_path: Path to graph.json for KG traversal.
                          Defaults to CLOUDFORGE_GRAPH_JSON env var or "graph.json".
                          KG traversal is silently skipped if the file does not exist.
@@ -183,15 +180,13 @@ def create_graph(
         terraform_mcp_cmd: Command list to launch the Terraform MCP server subprocess.
                            e.g. ["npx", "-y", "@hashicorp/terraform-mcp-server"]
                            When None (default), service_discovery runs LLM-only.
-                           The adapter instance is created once and reused for the
-                           entire graph run.
 
     Returns:
         A compiled LangGraph graph. Requires a thread_id in the config dict
         when streaming (needed for interrupt() support).
     """
     import os
-    llm = _build_llm(model_type, model_name)
+    llm = _build_llm(model_name)
 
     # Terraform MCP adapter — optional, gracefully absent when not configured
     terraform_adapter = None

@@ -9,7 +9,16 @@
       "Bash(.venv/Scripts/pytest tests/test_kg_rag.py -v -s -m \"not integration\")",
       "Bash(.venv/Scripts/python.exe -c \"import pytest; print\\(pytest.__version__\\)\")",
       "Bash(uv add:*)",
-      "Bash(uv run:*)"
+      "Bash(uv run:*)",
+      "Bash(grep \":0$\" -v)",
+      "Bash(C:/Users/aadit/Projects/CloudForge/cloudforge/backend/.venv/Scripts/pip install:*)",
+      "Bash(curl -s https://openrouter.ai/docs)",
+      "WebSearch",
+      "WebFetch(domain:openrouter.ai)",
+      "WebFetch(domain:reference.langchain.com)",
+      "mcp__plugin_context7_context7__query-docs",
+      "WebFetch(domain:snyk.io)",
+      "Bash(source .venv/Scripts/activate)"
     ]
   }
 }

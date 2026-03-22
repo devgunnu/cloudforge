@@ -47,20 +47,16 @@ def code_generator_node(state: CodeGenState) -> dict[str, Any]:
         api_contracts=api_contracts,
     )
 
-    try:
-        response = get_default_llm().invoke(
-            [SystemMessage(content=system_msg), HumanMessage(content=user_msg)]
-        )
-        # Strip <think>...</think> chain-of-thought blocks first (Groq 8b), then
-        # extract from fenced code blocks. If no fence is found, use the full
-        # stripped response as the code.
-        raw = strip_think_tags(response.content)
-        code = strip_code_fences(raw)
-        if not code.strip():
-            # Last resort: take raw post-think content directly
-            code = raw.strip()
-        if not code.strip():
-            return {"syntax_errors": ["Code generator returned empty output"]}
-        return {"generated_code": code}
-    except Exception as e:
-        return {"syntax_errors": [f"Code generation failed: {e}"]}
+    response = get_default_llm().invoke(
+        [SystemMessage(content=system_msg), HumanMessage(content=user_msg)]
+    )
+    # Strip <think>...</think> chain-of-thought blocks first, then extract from
+    # fenced code blocks. If no fence is found, use the full stripped response.
+    raw = strip_think_tags(response.content)
+    code = strip_code_fences(raw)
+    if not code.strip():
+        # Last resort: take raw post-think content directly
+        code = raw.strip()
+    if not code.strip():
+        return {"syntax_errors": ["Code generator returned empty output"]}
+    return {"generated_code": code}

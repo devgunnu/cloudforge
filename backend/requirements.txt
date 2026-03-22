@@ -7,5 +7,6 @@ langgraph==1.1.3
 langchain==1.2.13
 langchain-community==0.4.1
 langchain-ollama>=1.0.0
+langchain-openrouter
 duckduckgo-search==8.1.1
 ddgs>=9.9.1

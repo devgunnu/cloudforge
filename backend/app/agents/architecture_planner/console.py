@@ -2,6 +2,8 @@
 """
 CloudForge Architecture Planner — Console Testing Utility
 
+All LLM calls route through OpenRouter (configured via OPENROUTER_* env vars).
+
 Usage (interactive prompts for any missing inputs):
     python -m app.agents.architecture_planner.console
 
@@ -11,8 +13,7 @@ Usage (fully non-interactive):
         --traffic "100k MAU, 500 RPS peak" \\
         --availability "US + EU, 99.9% SLA" \\
         --prd-file /path/to/prd.txt \\
-        --cloud AWS \\
-        --model anthropic
+        --cloud AWS
 
 Flags:
     --budget TEXT           Budget description
@@ -21,8 +22,7 @@ Flags:
     --prd TEXT              PRD inline text
     --prd-file PATH         Path to PRD file (alternative to --prd)
     --cloud AWS|GCP|Azure   Cloud provider
-    --model anthropic|ollama  Model backend (default: anthropic)
-    --model-name NAME       Override default model name
+    --model-name NAME       Override default OpenRouter model name
 """
 from __future__ import annotations
 
@@ -52,8 +52,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prd", type=str, help="PRD text (inline)")
     parser.add_argument("--prd-file", type=str, help="Path to PRD file")
     parser.add_argument("--cloud", type=str, choices=["AWS", "GCP", "Azure"], help="Cloud provider")
-    parser.add_argument("--model", type=str, default="anthropic", choices=["anthropic", "ollama"])
-    parser.add_argument("--model-name", type=str, default=None, help="Override default model name")
+    parser.add_argument("--model-name", type=str, default=None, help="Override default OpenRouter model name")
     parser.add_argument(
         "--terraform-mcp-cmd",
         type=str,
@@ -281,24 +280,27 @@ def save_outputs(final_state: dict, output_dir: Path) -> None:
 def main() -> None:
     args = parse_args()
 
-    # Validate API key early for Anthropic
-    if args.model == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
+    # Validate API key early
+    from app.config import settings
+    if settings.llm_provider == "openrouter" and not settings.openrouter_api_key:
         print(
-            "Error: ANTHROPIC_API_KEY environment variable is not set.\n"
-            "Set it before running, or use --model ollama for local inference.",
+            "Error: OPENROUTER_API_KEY environment variable is not set.\n"
+            "Get an API key at https://openrouter.ai and add it to your .env file,\n"
+            "or set LLM_PROVIDER=ollama for local inference.",
             file=sys.stderr,
         )
         sys.exit(1)
 
     inputs = collect_inputs(args)
 
-    print(f"\nBuilding architecture planner graph ({args.model})...")
+    model_label = settings.openrouter_model if settings.llm_provider == "openrouter" else settings.ollama_model
+    print(f"\nBuilding architecture planner graph ({settings.llm_provider}: {model_label})...")
     from app.agents.architecture_planner.graph import create_graph
     from app.agents.architecture_planner.state import make_initial_state
 
     import shlex
     terraform_mcp_cmd = shlex.split(args.terraform_mcp_cmd) if args.terraform_mcp_cmd else None
-    graph = create_graph(model_type=args.model, model_name=args.model_name, terraform_mcp_cmd=terraform_mcp_cmd)
+    graph = create_graph(model_name=args.model_name, terraform_mcp_cmd=terraform_mcp_cmd)
     initial_state = make_initial_state(**inputs)
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}

@@ -5,6 +5,47 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
+# ---------------------------------------------------------------------------
+# LLM structured output schemas (used with .with_structured_output())
+# ---------------------------------------------------------------------------
+
+
+class APIContractLLMOutput(BaseModel):
+    source_service_id: str = Field(description="ID of the service that initiates the call")
+    target_service_id: str = Field(description="ID of the service that receives the call")
+    relationship: str = Field(description="Type of relationship e.g. invokes, publishes_to")
+    contract_type: str = Field(description="One of: event_payload, api_request, queue_message, stream_record")
+    payload_schema: dict[str, Any] = Field(default_factory=dict, description="JSON schema of the data payload")
+    function_signatures: dict[str, str] = Field(default_factory=dict, description="Language to function signature mapping")
+    notes: str = Field(default="", description="Additional notes about the contract")
+
+
+class TaskGroupLLMOutput(BaseModel):
+    group_id: str = Field(description="Unique identifier for this task group")
+    service_ids: list[str] = Field(description="List of service IDs to generate code for in this group")
+    rationale: str = Field(default="", description="Why these services are grouped together")
+
+
+class ManagerPlanOutput(BaseModel):
+    api_contracts: list[APIContractLLMOutput] = Field(
+        default_factory=list,
+        description="Interface contracts between connected services",
+    )
+    task_groups: list[TaskGroupLLMOutput] = Field(
+        description="Groups of services for parallel code generation"
+    )
+    plan_summary: str = Field(default="", description="High-level summary of the generation plan")
+
+
+class TFFile(BaseModel):
+    name: str = Field(description="Terraform filename e.g. main.tf, variables.tf")
+    content: str = Field(description="Full HCL content of the file")
+
+
+class TFGeneratorOutput(BaseModel):
+    files: list[TFFile] = Field(description="All Terraform files to generate")
+
+
 class ServiceNodeInput(BaseModel):
     id: str
     service_type: Literal[

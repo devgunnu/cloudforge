@@ -9,7 +9,6 @@ from langgraph.types import Command
 
 from app.agents.architecture_planner import create_graph, make_initial_state
 from app.agents.agent1.state import AgentState
-from app.config import settings
 from app.schemas.architecture import (
     ArchWorkflowResponse,
     ClarifyingQuestionSchema,
@@ -46,8 +45,6 @@ def _get_arch_graph():
     global _arch_graph
     if _arch_graph is None:
         _arch_graph = create_graph(
-            model_type=settings.arch_model_type,
-            model_name=settings.arch_model_name,
             graph_json_path=_GRAPH_JSON,
             community_summaries_path=_SUMMARIES_JSON,
         )

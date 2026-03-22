@@ -7,11 +7,12 @@ from typing import Any
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from app.agents.agent3.config import MANAGER_MAX_REVIEW_ITERATIONS
-from app.agents.agent3.llm import get_default_llm
+from app.agents.agent3.llm import get_default_llm, get_structured_llm
 from app.agents.agent3.prompts.manager_prompts import (
     manager_planning_system,
     manager_planning_user,
 )
+from app.agents.agent3.models import ManagerPlanOutput
 from app.agents.agent3.state import (
     AgentState,
     APIContract,
@@ -131,28 +132,40 @@ def _planning_mode(state: AgentState) -> dict[str, Any]:
         code_gen_tasks=code_gen_tasks,
     )
 
+    msgs = [SystemMessage(content=sys_msg), HumanMessage(content=usr_msg)]
+    plan: ManagerPlanOutput | None = None
+
+    # ---- Structured output (primary path) ----
     try:
-        response = get_default_llm().invoke(
-            [SystemMessage(content=sys_msg), HumanMessage(content=usr_msg)]
-        )
-        parsed = safe_json_extract(response.content)
+        result = get_structured_llm(ManagerPlanOutput).invoke(msgs)
+        plan = result.get("parsed")
+        if result.get("parsing_error"):
+            logger.warning("Manager structured output parse error: %s", result["parsing_error"])
     except Exception:
-        logger.exception("Manager planning LLM call / parse failed — using fallback")
-        parsed = None
+        logger.warning("Manager structured output call failed — falling back to raw JSON parse")
 
-    # ---- Parse or fallback ----
-    if parsed and isinstance(parsed, dict):
-        raw_contracts = parsed.get("api_contracts") or []
-        api_contracts = _parse_api_contracts(raw_contracts)
-
-        raw_groups = parsed.get("task_groups") or []
-        task_groups = _build_task_groups(raw_groups, code_gen_tasks, api_contracts)
-
-        plan_summary = parsed.get("plan_summary", "")
+    # ---- Extract from Pydantic model ----
+    if plan is not None:
+        api_contracts = _parse_api_contracts([c.model_dump() for c in plan.api_contracts])
+        task_groups = _build_task_groups([g.model_dump() for g in plan.task_groups], code_gen_tasks, api_contracts)
+        plan_summary = plan.plan_summary
     else:
-        api_contracts = []
-        task_groups = []
-        plan_summary = ""
+        # ---- Fallback: raw text JSON extraction ----
+        try:
+            raw_response = get_default_llm().invoke(msgs)
+            parsed = safe_json_extract(raw_response.content)
+        except Exception:
+            logger.exception("Manager planning fallback LLM call / parse failed")
+            parsed = None
+
+        if parsed and isinstance(parsed, dict):
+            api_contracts = _parse_api_contracts(parsed.get("api_contracts") or [])
+            task_groups = _build_task_groups(parsed.get("task_groups") or [], code_gen_tasks, api_contracts)
+            plan_summary = parsed.get("plan_summary", "")
+        else:
+            api_contracts = []
+            task_groups = []
+            plan_summary = ""
 
     # Fallback: if no groups were produced, bundle everything into one group
     if not task_groups and code_gen_tasks:
