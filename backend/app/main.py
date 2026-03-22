@@ -13,8 +13,10 @@ from app.db.mongo import connect_mongo, disconnect_mongo
 from app.routers import agent3, auth, health, projects, workflows
 from app.routers.architecture import router as architecture_router
 from app.routers.architecture_sse import router as architecture_sse_router
+from app.routers.validate import router as validate_router
 from app.routers.build import router as build_router
 from app.routers.deploy import router as deploy_router
+from app.routers.files import router as files_router
 from app.routers.history import router as history_router
 from app.routers.prd import router as prd_router
 
@@ -44,18 +46,6 @@ async def lifespan(app: FastAPI):
         Fernet(settings.fernet_key.encode())
     except Exception as exc:
         raise RuntimeError(f"FERNET_KEY is invalid: {exc}") from exc
-
-    try:
-        from app.agents.architecture_planner.kg_traversal_agent import init_kuzu
-
-        app.state.kuzu_conn = init_kuzu(
-            graph_json_path=settings.graph_json_path,
-            db_path=settings.kuzu_db_path,
-        )
-        logger.info("Kuzu loaded")
-    except Exception as exc:
-        logger.warning("Kuzu init failed: %s", exc)
-        app.state.kuzu_conn = None
 
     yield
 
@@ -87,10 +77,12 @@ app.include_router(projects.router)
 app.include_router(workflows.router)
 app.include_router(architecture_router)
 app.include_router(architecture_sse_router)
+app.include_router(validate_router)
 app.include_router(agent3.router)
 app.include_router(prd_router)
 app.include_router(build_router)
 app.include_router(deploy_router)
+app.include_router(files_router)
 app.include_router(history_router)
 
 

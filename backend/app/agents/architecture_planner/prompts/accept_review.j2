@@ -2,7 +2,7 @@
 ║             CLOUD ARCHITECTURE — REVIEW SUMMARY                  ║
 ╚══════════════════════════════════════════════════════════════════╝
 
-Evaluation Score: {{ eval_score }}/10
+Architecture Tests: {{ "PASSED" if arch_test_passed else "FAILED" }}
 
 ─── ARCHITECTURE COMPONENTS ──────────────────────────────────────
 {% for node in architecture_diagram.nodes %}
@@ -19,5 +19,11 @@ Evaluation Score: {{ eval_score }}/10
 ─── NON-FUNCTIONAL REQUIREMENTS (excerpt) ───────────────────────
 {{ nfr_document[:800] }}{% if nfr_document|length > 800 %}...{% endif %}
 
-─── EVALUATOR FEEDBACK ───────────────────────────────────────────
-{{ eval_feedback }}
+─── ARCHITECTURE TEST RESULTS ────────────────────────────────────
+{{ arch_test_feedback }}
+{% if arch_test_violations %}
+Violations found:
+{% for v in arch_test_violations %}
+  [{{ v.severity }}] {{ v.test_name }}: {{ v.description }}
+{% endfor %}
+{% endif %}

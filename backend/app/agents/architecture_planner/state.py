@@ -38,17 +38,19 @@ class ServiceEntry(BaseModel):
     use_case: str
 
 
-class ClarifyingQuestion(BaseModel):
-    question: str
-    choices: list[str]  # exactly 3 choices
-    context: str        # why this info is needed
-
-
 class ComplianceGap(BaseModel):
     requirement: str      # the PRD/NFR requirement that is not met
     severity: str         # "CRITICAL" | "MAJOR" | "MINOR"
     description: str      # what is missing or wrong in the architecture
     recommendation: str   # how to fix it
+
+
+class ArchTestViolation(BaseModel):
+    test_name: str
+    severity: str         # "CRITICAL" | "MAJOR" | "MINOR"
+    component_id: str
+    description: str
+    remediation: str
 
 
 # ---------------------------------------------------------------------------
@@ -64,52 +66,39 @@ class ArchitecturePlannerState(TypedDict):
     prd: str
     cloud_provider: str           # "AWS" | "GCP" | "Azure"
 
-    # === INFO-GATHERING SUBGRAPH ===
-    is_info_sufficient: bool
-    clarifying_questions: list[ClarifyingQuestion]
-    user_answers: list[str]       # accumulated answers across MCQ sessions
-    info_iteration_count: int     # max 3
+    # === RESEARCH ===
+    research_results: str
 
-    # === QUERY SUBGRAPH ===
-    query_results: str
-    query_results_sufficient: bool
-    query_iteration_count: int    # max 2
-
-    # === KG TRAVERSAL SUBGRAPH ===
-    kg_constraints: list[str]           # parsed constraint node IDs from NFRs
-    kg_frontier: list[str]              # nodes to expand in next hop
-    kg_active_nodes: list[str]          # all recommended nodes (grows each hop)
-    kg_blocked_nodes: list[str]         # all blocked nodes (grows each hop)
-    kg_reasoning_path: list[dict]       # full traversal trace
-    kg_communities: list[int]           # relevant community IDs
-    kg_converged: bool                  # traversal converged flag
-    kg_explanation: str                 # KG-validated recommendation text
-    kg_traversal_iteration_count: int   # hop guard (max 5)
+    # === SIMULATION ===
+    arch_simulation: Optional[dict]       # ArchSimulationResult dict or None
+    resilience_simulation: Optional[dict] # ResilienceSimulationResult dict or None
 
     # === SERVICE DISCOVERY ===
     relevant_services: list[ServiceEntry]
-    terraform_mcp_available: bool         # True if terraform MCP returned data this run
+    mcp_available: bool
 
     # === ARCHITECTURE (4 deliverables) ===
     architecture_diagram: Optional[ArchitectureDiagram]
     nfr_document: str
     component_responsibilities: str
     extra_context: str
+    arch_iteration_count: int
 
     # === COMPLIANCE (PRD + NFR compliance) ===
     compliance_gaps: list[ComplianceGap]
     compliance_passed: bool
 
-    # === EVAL ===
-    eval_score: float             # 0.0 – 10.0
-    eval_feedback: str
-    eval_passed: bool
-    arch_iteration_count: int     # max 3
+    # === ARCH TEST (replaces eval) ===
+    arch_test_passed: bool
+    arch_test_feedback: str
+    arch_test_violations: list[ArchTestViolation]
+    arch_test_iteration_count: int
 
     # === ACCEPT SUBGRAPH ===
     user_change_requests: str
     user_accepted: bool
     accept_iteration_count: int   # max 3
+    query_rejection_count: int
 
     # === DEBUG ===
     current_node: str
@@ -130,37 +119,26 @@ def make_initial_state(
         "availability": availability,
         "prd": prd,
         "cloud_provider": cloud_provider,
-        "is_info_sufficient": False,
-        "clarifying_questions": [],
-        "user_answers": [],
-        "info_iteration_count": 0,
-        "query_results": "",
-        "query_results_sufficient": False,
-        "query_iteration_count": 0,
-        "kg_constraints": [],
-        "kg_frontier": [],
-        "kg_active_nodes": [],
-        "kg_blocked_nodes": [],
-        "kg_reasoning_path": [],
-        "kg_communities": [],
-        "kg_converged": False,
-        "kg_explanation": "",
-        "kg_traversal_iteration_count": 0,
+        "research_results": "",
+        "arch_simulation": None,
+        "resilience_simulation": None,
         "relevant_services": [],
-        "terraform_mcp_available": False,
+        "mcp_available": False,
         "architecture_diagram": None,
         "nfr_document": "",
         "component_responsibilities": "",
         "extra_context": "",
+        "arch_iteration_count": 0,
         "compliance_gaps": [],
         "compliance_passed": False,
-        "eval_score": 0.0,
-        "eval_feedback": "",
-        "eval_passed": False,
-        "arch_iteration_count": 0,
+        "arch_test_passed": False,
+        "arch_test_feedback": "",
+        "arch_test_violations": [],
+        "arch_test_iteration_count": 0,
         "user_change_requests": "",
         "user_accepted": False,
         "accept_iteration_count": 0,
+        "query_rejection_count": 0,
         "current_node": "",
         "error_message": None,
     }

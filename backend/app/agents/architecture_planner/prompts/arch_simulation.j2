@@ -1,0 +1,38 @@
+You are a cloud performance architect. Given a deterministic analysis of the architecture below, fill in the per-service throughput estimates and executive summary.
+
+## Architecture
+
+{{ architecture_diagram }}
+
+## Traffic Profile: {{ traffic }}
+## Budget: {{ budget }}
+## Availability Target: {{ availability }}
+
+## Pre-computed Request Paths (with latency)
+
+{{ request_paths }}
+
+## Pre-computed SPOFs
+
+{{ spofs }}
+
+## Pre-computed Cascade Risks
+
+{{ cascade_risks }}
+
+## Task
+
+Using the traffic profile as ground truth, estimate:
+
+1. **service_throughput** — for each node, estimate RPS at peak traffic, utilization %, and whether it is the bottleneck
+2. **overall_bottleneck** — which single service is the primary bottleneck at peak load (just the service name)
+3. **capacity_headroom_pct** — estimated % headroom before the bottleneck saturates (0=already saturated, 100=lots of headroom)
+4. **executive_summary** — 2–3 sentence plain-English summary of performance posture
+
+Output ONLY valid JSON:
+{
+  "service_throughput": [{"node_id": "...", "service": "...", "estimated_rps": 0, "utilization_pct": 0, "bottleneck": false}],
+  "overall_bottleneck": "...",
+  "capacity_headroom_pct": 0,
+  "executive_summary": "..."
+}

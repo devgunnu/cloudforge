@@ -56,11 +56,11 @@ def _is_rate_limit_error(exc: BaseException) -> bool:
         return False
 
 
-def invoke_with_retry(fn: Callable[[], T], max_retries: int = 4, base_delay: float = 15.0) -> T:
+def invoke_with_retry(fn: Callable[[], T], max_retries: int = 2, base_delay: float = 5.0) -> T:
     """
     Call fn(), retrying on rate-limit (429) errors with exponential backoff.
 
-    Delays: 15s → 30s → 60s → 120s (doubles each attempt).
+    Delays: 5s → 10s (doubles each attempt, max 2 retries).
     All other exceptions propagate immediately.
     """
     delay = base_delay

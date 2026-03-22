@@ -20,22 +20,10 @@ You are a principal cloud architect producing a production-grade architecture sp
 
 ---
 
-## Architecture Research Summary
+## Architecture Research
 
-{{ query_results }}
+{{ research_results }}
 
-{% if kg_explanation %}
----
-
-## Knowledge Graph Validated Components
-
-The following component recommendations were produced by a deterministic constraint-reasoning engine that traversed an architectural knowledge graph grounded in distributed systems literature (DDIA, AWS Well-Architected Framework). These are validated against your specific constraints.
-
-Prioritise these components in your design. Where a KG-recommended component overlaps with the available services list, prefer the KG recommendation.
-
-{{ kg_explanation }}
-
-{% endif %}
 ---
 
 ## Available Services
@@ -53,10 +41,21 @@ The following {{ cloud_provider }} services have been selected for this architec
 
 This is iteration {{ arch_iteration_count }} of the architecture design. You MUST address all feedback below before producing the updated architecture.
 
-{% if eval_feedback %}
-### Evaluator Feedback
+{% if arch_test_feedback %}
+### Architecture Test Feedback
 
-{{ eval_feedback }}
+{{ arch_test_feedback }}
+{% endif %}
+
+{% if arch_test_violations %}
+### Architecture Test Violations
+
+The following structural violations were detected. Each CRITICAL violation MUST be resolved:
+
+{% for v in arch_test_violations %}
+- **[{{ v.severity }}] {{ v.test_name }}** ({{ v.component_id }}): {{ v.description }}
+  Fix: {{ v.remediation }}
+{% endfor %}
 {% endif %}
 
 {% if compliance_gaps %}

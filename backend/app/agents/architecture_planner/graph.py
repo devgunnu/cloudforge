@@ -1,3 +1,16 @@
+# flowchart TD
+#     START --> architecture
+#     architecture --> service_discovery
+#     service_discovery --> arch_simulator
+#     arch_simulator --> resilience_simulator
+#     resilience_simulator --> compliance
+#     compliance --> arch_test
+#     arch_test -->|CRITICAL violations and count < 3| architecture
+#     arch_test -->|passed or max iterations| accept
+#     accept -->|user_accepted| END
+#     accept -->|rejected and query_rejection_count < 2| architecture
+#     accept -->|rejected and query_rejection_count >= 2| END
+
 from __future__ import annotations
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -10,20 +23,19 @@ from app.agents.architecture_planner.state import (
     ArchNode,
     ArchConnection,
     ArchitecturePlannerState,
-    ClarifyingQuestion,
+    ArchTestViolation,
     ServiceEntry,
     ComplianceGap,
 )
 from app.agents.architecture_planner.prompts import render_prompt
-from app.agents.architecture_planner.query_agent import (
-    build_info_gathering_subgraph,
-    build_query_subgraph,
-)
-from app.agents.architecture_planner.kg_traversal_agent import init_kuzu, build_kg_subgraph
+# make_research_node is unplugged — PRD fed directly into architecture node
+# from app.agents.architecture_planner.research_agent import make_research_node
 from app.agents.architecture_planner.service_discovery_agent import make_service_discovery_node
 from app.agents.architecture_planner.architecture_agent import make_architecture_node
+from app.agents.architecture_planner.arch_simulator import make_arch_simulator_node
+from app.agents.architecture_planner.resilience_simulator import make_resilience_simulator_node
 from app.agents.architecture_planner.compliance_agent import make_compliance_node
-from app.agents.architecture_planner.eval_agent import make_eval_node
+from app.agents.architecture_planner.arch_test_agent import make_arch_test_node
 
 
 # ---------------------------------------------------------------------------
@@ -60,8 +72,9 @@ def make_present_architecture_node():
             nfr_document=state["nfr_document"],
             component_responsibilities=state["component_responsibilities"],
             extra_context=state["extra_context"],
-            eval_score=state["eval_score"],
-            eval_feedback=state["eval_feedback"],
+            arch_test_passed=state["arch_test_passed"],
+            arch_test_feedback=state["arch_test_feedback"],
+            arch_test_violations=[v.model_dump() for v in (state.get("arch_test_violations") or [])],
         )
 
         # Pause for human review — resumes with Command(resume={"accepted": bool, "changes": str})
@@ -89,7 +102,9 @@ def make_present_architecture_node():
                 "user_accepted": False,
                 "user_change_requests": changes,
                 "accept_iteration_count": state["accept_iteration_count"] + 1,
-                "arch_iteration_count": 0,  # reset so arch subgraph can run again
+                "arch_iteration_count": 0,
+                "arch_test_iteration_count": 0,
+                "query_rejection_count": state["query_rejection_count"] + 1,
                 "current_node": "present_architecture",
             },
             goto=END,
@@ -103,24 +118,6 @@ def build_accept_subgraph():
     builder = StateGraph(ArchitecturePlannerState)
     builder.add_node("present_architecture", make_present_architecture_node())
     builder.add_edge(START, "present_architecture")
-    return builder.compile()
-
-
-# ---------------------------------------------------------------------------
-# Arch-review subgraph (architecture → compliance → eval, loops up to 3x)
-# ---------------------------------------------------------------------------
-
-
-def build_arch_review_subgraph(llm):
-    """Compile the arch-review subgraph."""
-    builder = StateGraph(ArchitecturePlannerState)
-    builder.add_node("architecture", make_architecture_node(llm))
-    builder.add_node("compliance", make_compliance_node(llm))
-    builder.add_node("eval", make_eval_node(llm))
-    builder.add_edge(START, "architecture")
-    builder.add_edge("architecture", "compliance")
-    builder.add_edge("compliance", "eval")
-    # eval uses Command(goto="architecture"|END) internally to control the loop
     return builder.compile()
 
 
@@ -147,10 +144,12 @@ def _build_llm(model_type: str, model_name: str | None):
 
 
 def _route_after_accept(state: ArchitecturePlannerState) -> str:
-    """Conditional edge: loop back to arch_review if user requested changes."""
+    """Conditional edge: loop back to research if user requested changes, else END."""
     if state["user_accepted"]:
         return END
-    return "arch_review"
+    if state.get("query_rejection_count", 0) >= 2:
+        return END  # auto-accept after 2 full rejections
+    return "architecture"
 
 
 def create_graph(
@@ -160,30 +159,25 @@ def create_graph(
     community_summaries_path: str | None = None,
     terraform_mcp_cmd: list[str] | None = None,
     kuzu_conn=None,
+    rag_vector_store=None,
 ):
     """
     Build and compile the full architecture planner graph.
 
     Args:
-        model_type: Ignored — kept for call-site compatibility. All agents use Anthropic.
-        model_name: Override the model name. Defaults to settings.llm_model (Haiku).
-        graph_json_path: Path to graph.json for KG traversal.
-                         Defaults to CLOUDFORGE_GRAPH_JSON env var or "graph.json".
-                         KG traversal is silently skipped if the file does not exist.
-        community_summaries_path: Path to community_summaries.json.
-                                  Defaults to CLOUDFORGE_COMMUNITY_SUMMARIES env var
-                                  or "community_summaries.json".
-        terraform_mcp_cmd: Command list to launch the Terraform MCP server subprocess.
-                           e.g. ["npx", "-y", "@hashicorp/terraform-mcp-server"]
-                           When None (default), service_discovery runs LLM-only.
-                           The adapter instance is created once and reused for the
-                           entire graph run.
+        model_type:              Ignored — kept for call-site compatibility.
+        model_name:              Override the model name. Defaults to settings.llm_model.
+        graph_json_path:         Ignored — kept for backward compatibility.
+        community_summaries_path: Ignored — kept for backward compatibility.
+        terraform_mcp_cmd:       Command list to launch the Terraform MCP server subprocess.
+                                 When None (default), service_discovery runs LLM-only.
+        kuzu_conn:               Ignored — kept for backward compatibility.
+        rag_vector_store:        Ignored — kept for backward compatibility.
 
     Returns:
         A compiled LangGraph graph. Requires a thread_id in the config dict
         when streaming (needed for interrupt() support).
     """
-    import os
     llm = _build_llm(model_type, model_name)
 
     # Terraform MCP adapter — optional, gracefully absent when not configured
@@ -192,40 +186,30 @@ def create_graph(
         from app.agents.architecture_planner.terraform_mcp import TerraformMCPAdapter
         terraform_adapter = TerraformMCPAdapter(cmd=terraform_mcp_cmd)
 
-    # KG setup — optional; gracefully skips when graph.json is absent or kuzu not installed
-    _graph_json = graph_json_path or os.environ.get("CLOUDFORGE_GRAPH_JSON", "graph.json")
-    _summaries = community_summaries_path or os.environ.get(
-        "CLOUDFORGE_COMMUNITY_SUMMARIES", "community_summaries.json"
-    )
-    # Use the already-open connection if provided (avoids double-lock on the DB file)
-    conn = kuzu_conn if kuzu_conn is not None else init_kuzu(_graph_json)
-    kg_traversal = build_kg_subgraph(llm, conn, _summaries)
-
-    # Build subgraphs
-    info_gathering = build_info_gathering_subgraph(llm)
-    query = build_query_subgraph(llm)
-    arch_review = build_arch_review_subgraph(llm)
+    # Build subgraphs and node factories
     accept = build_accept_subgraph()
 
     builder = StateGraph(ArchitecturePlannerState)
 
-    # Register nodes
-    builder.add_node("info_gathering", info_gathering)
-    builder.add_node("query", query)
-    builder.add_node("kg_traversal", kg_traversal)
+    # Register nodes — research node unplugged; PRD flows directly into architecture
+    builder.add_node("architecture", make_architecture_node(llm))
     builder.add_node("service_discovery", make_service_discovery_node(llm, terraform_adapter=terraform_adapter))
-    builder.add_node("arch_review", arch_review)
+    builder.add_node("arch_simulator", make_arch_simulator_node(llm))
+    builder.add_node("resilience_simulator", make_resilience_simulator_node(llm))
+    builder.add_node("compliance", make_compliance_node(llm))
+    builder.add_node("arch_test", make_arch_test_node(llm))
     builder.add_node("accept", accept)
 
-    # Main pipeline edges
-    builder.add_edge(START, "info_gathering")
-    builder.add_edge("info_gathering", "query")
-    builder.add_edge("query", "kg_traversal")
-    builder.add_edge("kg_traversal", "service_discovery")
-    builder.add_edge("service_discovery", "arch_review")
-    builder.add_edge("arch_review", "accept")
+    # Main pipeline edges — research node skipped, START goes directly to architecture
+    builder.add_edge(START, "architecture")
+    builder.add_edge("architecture", "service_discovery")
+    builder.add_edge("service_discovery", "arch_simulator")
+    builder.add_edge("arch_simulator", "resilience_simulator")
+    builder.add_edge("resilience_simulator", "compliance")
+    builder.add_edge("compliance", "arch_test")
+    # arch_test uses Command(goto="architecture"|"accept") internally — no static edge needed
 
-    # Conditional edge: after accept, either finish or loop back for changes
+    # Conditional edge: after accept, either finish or loop back to research for a full re-run
     builder.add_conditional_edges("accept", _route_after_accept)
 
     # MemorySaver is required for interrupt() to work across subgraphs.
@@ -233,7 +217,7 @@ def create_graph(
     checkpointer = MemorySaver(
         serde=JsonPlusSerializer(
             allowed_msgpack_modules=[
-                ClarifyingQuestion, ServiceEntry, ComplianceGap,
+                ArchTestViolation, ServiceEntry, ComplianceGap,
                 ArchitectureDiagram, ArchNode, ArchConnection,
             ]
         )

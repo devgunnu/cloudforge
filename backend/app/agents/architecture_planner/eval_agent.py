@@ -1,4 +1,6 @@
-from __future__ import annotations
+# UNPLUGGED — replaced by arch_test_agent.py (deterministic rules, zero LLM calls).
+# Not imported by graph.py. Kept for reference.
+# from __future__ import annotations
 
 import json
 

@@ -1,4 +1,6 @@
-from __future__ import annotations
+# UNPLUGGED — replaced by research_agent.py (single LLM research node).
+# Not imported by graph.py. Kept for reference.
+# from __future__ import annotations
 
 import json
 import os

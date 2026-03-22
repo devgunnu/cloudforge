@@ -7,7 +7,9 @@
       "Bash(cat:*)",
       "Bash(npx tsc:*)",
       "Bash(xargs grep:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(xargs -I {} find {} -type f)",
+      "Bash(find /c/Users/gunbi/OneDrive/Desktop/cloudforge/frontend/src -name *code* -o -name *output* -o -name *file*)"
     ]
   }
 }

@@ -521,9 +521,9 @@ export default function ArchitecturePanel() {
         <div
           style={{
             position: 'relative',
-            height: '480px',
-            flexShrink: 0,
-            overflow: 'visible',
+            flex: 1,
+            minHeight: 300,
+            overflow: 'hidden',
           }}
           aria-label="Architecture diagram"
         >

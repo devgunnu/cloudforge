@@ -20,18 +20,6 @@ All recommendations MUST be tailored specifically to **{{ cloud_provider }}**. D
 
 {{ prd }}
 
-{% if user_answers %}
----
-
-## User Clarifications
-
-The following answers were provided during the requirements clarification phase. Treat these as authoritative constraints.
-
-{% for answer in user_answers %}
-- {{ answer }}
-{% endfor %}
-{% endif %}
-
 ---
 
 ## Research Areas to Cover
