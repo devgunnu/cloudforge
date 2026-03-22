@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-# ---------------------------------------------------------------------------
-# LLM
-# ---------------------------------------------------------------------------
-
-DEFAULT_MODEL = "qwen3.5"  # Ollama: strong model with tool-use support
-FAST_MODEL = "qwen3.5"  # Ollama: fast model for lighter tasks like code fixing
+# NOTE: LLM model names are configured via settings.agent3_model /
+#       settings.agent3_fast_model (app/config.py) so they can be
+#       overridden through the .env file without touching source code.
 
 # ---------------------------------------------------------------------------
 # Retry / iteration limits

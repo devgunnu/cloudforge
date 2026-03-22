@@ -15,7 +15,7 @@ from app.agents.agent3 import (
     get_graph,
 )
 
-router = APIRouter(prefix="/agent3", tags=["agent3"])
+router = APIRouter(prefix="/workflows/agent3", tags=["agent3"])
 
 # Nodes whose start/end events are surfaced as SSE progress messages
 _PROGRESS_NODES = frozenset({
