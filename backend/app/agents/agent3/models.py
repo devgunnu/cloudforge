@@ -23,6 +23,7 @@ class ServiceNodeInput(BaseModel):
         "kinesis",
         "glue",
         "step_functions",
+        "cognito",
     ]
     label: str
     config: dict[str, Any] = Field(default_factory=dict)

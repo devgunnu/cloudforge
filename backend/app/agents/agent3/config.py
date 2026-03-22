@@ -41,6 +41,7 @@ SUPPORTED_SERVICE_TYPES = [
     "kinesis",
     "glue",
     "step_functions",
+    "cognito",
 ]
 
 # Default language for generated application code per service type

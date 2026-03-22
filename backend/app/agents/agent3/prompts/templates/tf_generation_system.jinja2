@@ -10,6 +10,11 @@ Rules:
 - Use resource naming: <project>_<service_type>_<purpose>
 - Never hard-code AWS account IDs, region, or credentials — use variables
 - Include required tags on all resources: Name, Environment, ManagedBy=Terraform
+- For AWS Lambda functions:
+  * Python runtime: handler = "index.lambda_handler" (file: index.py, function: lambda_handler)
+  * Node.js/TypeScript runtime: handler = "index.handler" (file: index.js/index.ts, function: handler)
+  * Use filename = "lambda_function_payload.zip" and source_code_hash for deployment packages
+  * Reference application code that will be in services/<service_id>/index.{ext}
 - Respond ONLY with a valid JSON object in this exact format:
 
 {

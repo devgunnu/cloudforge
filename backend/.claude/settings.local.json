@@ -9,7 +9,12 @@
       "Bash(.venv/Scripts/pytest tests/test_kg_rag.py -v -s -m \"not integration\")",
       "Bash(.venv/Scripts/python.exe -c \"import pytest; print\\(pytest.__version__\\)\")",
       "Bash(uv add:*)",
-      "Bash(uv run:*)"
+      "Bash(uv run:*)",
+      "Bash(ls:*)",
+      "Bash(curl -s http://localhost:11434/api/tags)",
+      "Bash(pytest tests/test_agent3_integration.py -v --tb=short)",
+      "Bash(pytest:*)",
+      "Bash(tee /tmp/e2e_test.log)"
     ]
   }
 }

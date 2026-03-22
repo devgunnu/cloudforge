@@ -58,3 +58,5 @@ htmlcov/
 
 ## CloudForge specific
 backend/outputs
+
+node_modules/

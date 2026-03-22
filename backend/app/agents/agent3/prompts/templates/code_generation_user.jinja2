@@ -55,16 +55,44 @@ The following Terraform resources are provisioned for this service — use the r
 {% endif %}
 
 ## Task
-Generate the handler/entry point file: `services/{{ service_id }}/handler.{{ ext }}`
+Generate the handler/entry point file: `services/{{ service_id }}/index.{{ ext }}`
 
 {% if service_type == "lambda" %}
-The handler must export a function with signature: `def handler(event, context)` (Python) or `export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult>` (TypeScript).
-{% elif service_type == "ecs" or service_type == "ec2" %}
-Generate a long-running service entrypoint appropriate for a container or server process.
-{% elif service_type == "glue" %}
-Generate a PySpark/Glue ETL script with a main() function.
-{% elif service_type == "step_functions" %}
-Generate Lambda handler functions for each state in the state machine.
+The handler must export a function with signature: `def lambda_handler(event, context)` (Python) or `export const handler = async (event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult>` (TypeScript).
+
+**IMPORTANT - Generate COMPLETE, PRODUCTION-READY implementation:**
+- NO placeholders or TODO comments
+- Implement ALL the functionality described in the service description and config
+- Use the AWS SDK (boto3 for Python, @aws-sdk for TypeScript) to interact with AWS services
+- Parse and handle the actual event structure for this service type
+- Implement error handling for all edge cases
+{% if config.description %}
+- Specifically implement: {{ config.description }}
+{% endif %}
+{% if config.layers %}
+- Use the libraries available in layers: {{ config.layers | join(', ') }}
+{% endif %}
+{% if config.environment %}
+- Use these environment variables: {{ config.environment | tojson }}
 {% endif %}
 
-Output ONLY the raw code content. No markdown. No explanation.
+{% elif service_type == "ecs" or service_type == "ec2" %}
+Generate a long-running service entrypoint appropriate for a container or server process.
+Implement the full business logic, not just a skeleton.
+{% elif service_type == "glue" %}
+Generate a complete PySpark/Glue ETL script with a main() function.
+Include actual data transformation logic based on the service description.
+{% elif service_type == "step_functions" %}
+Generate Lambda handler functions for each state in the state machine.
+Implement complete logic for each state handler.
+{% elif service_type == "api_gateway" %}
+Generate TypeScript Express.js or handler functions for all API endpoints.
+{% if config.endpoints %}
+Implement these endpoints with full request/response handling:
+{% for endpoint in config.endpoints %}
+- {{ endpoint.method }} {{ endpoint.path }}{% if endpoint.description %}: {{ endpoint.description }}{% endif %}
+{% endfor %}
+{% endif %}
+{% endif %}
+
+Output ONLY the raw code content. No markdown fences. No explanations. No placeholders.

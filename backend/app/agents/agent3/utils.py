@@ -51,20 +51,45 @@ def safe_json_extract(text: str) -> Any:
     for start_char, end_char in (("{", "}"), ("[", "]")):
         idx = clean.find(start_char)
         if idx >= 0:
-            # Find the matching closing brace by counting depth
+            # Find the matching closing brace by counting depth, respecting strings
             depth = 0
-            for i, ch in enumerate(clean[idx:], start=idx):
-                if ch == start_char:
-                    depth += 1
-                elif ch == end_char:
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            return json.loads(clean[idx : i + 1])
-                        except json.JSONDecodeError:
-                            break
+            in_string = False
+            escape_next = False
 
-    raise ValueError(f"No valid JSON found in response (first 200 chars): {clean[:200]!r}")
+            for i, ch in enumerate(clean[idx:], start=idx):
+                if escape_next:
+                    escape_next = False
+                    continue
+
+                if ch == '\\':
+                    escape_next = True
+                    continue
+
+                if ch == '"' and not escape_next:
+                    in_string = not in_string
+                    continue
+
+                if not in_string:
+                    if ch == start_char:
+                        depth += 1
+                    elif ch == end_char:
+                        depth -= 1
+                        if depth == 0:
+                            try:
+                                return json.loads(clean[idx : i + 1])
+                            except json.JSONDecodeError:
+                                # If this fails, keep scanning for another valid JSON
+                                break
+
+    # Show more context for debugging
+    preview_len = min(500, len(clean))
+    last_part = clean[-100:] if len(clean) > 100 else "(response too short)"
+    raise ValueError(
+        f"No valid JSON found in response. "
+        f"Length: {len(clean)} chars. "
+        f"First {preview_len} chars: {clean[:preview_len]!r}. "
+        f"Last 100 chars: {last_part!r}"
+    )
 
 
 # ---------------------------------------------------------------------------

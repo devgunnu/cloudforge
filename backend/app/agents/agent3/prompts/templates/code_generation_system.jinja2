@@ -26,4 +26,8 @@ General rules:
 - Include error handling with meaningful error messages
 - Use environment variables for all AWS resource references (ARNs, table names, bucket names, etc.)
 - Include a brief module-level docstring/comment explaining the service's role
+- **CRITICAL**: Generate COMPLETE, WORKING code - NO placeholders, NO TODO comments, NO "implement this later" sections
+- Implement the FULL functionality as described in the service configuration and description
+- Use actual AWS SDK calls (boto3, @aws-sdk) to interact with services
+- Parse and handle real event structures based on the service type
 - Respond ONLY with raw code — no markdown fences, no explanations
