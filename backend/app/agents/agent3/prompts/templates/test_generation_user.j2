@@ -1,0 +1,27 @@
+Generate {{ language }} unit tests for the following service.
+
+## Service
+- ID: {{ service_id }}
+- Type: {{ service_type | upper }}
+
+## Source Code to Test
+`services/{{ service_id }}/handler.{{ ext }}`
+
+```{{ language }}
+{{ source_code }}
+```
+
+{% if architecture_context %}
+## Architecture Context
+{{ architecture_context }}
+{% endif %}
+
+## Task
+Generate test file: `services/{{ service_id }}/test_handler.{{ ext }}`
+
+Cover:
+1. Happy path for each exported function / handler
+2. Error handling (missing input, AWS service errors, env var not set)
+3. Edge cases relevant to the service type (empty events, malformed payloads, etc.)
+
+Output ONLY the raw test code. No markdown. No explanation.

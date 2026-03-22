@@ -15,6 +15,16 @@ class Settings(BaseSettings):
     max_clarification_rounds: int = 6
     max_research_rounds: int = 3
 
+    # Agent 2 — Architecture Planner LLM
+    # Set arch_model_type="anthropic" and ANTHROPIC_API_KEY in .env for Claude.
+    # Defaults to local Ollama so the server starts without any extra API keys.
+    arch_model_type: str = "ollama"
+    arch_model_name: str = "llama3.1:8b"
+
+    # Agent 3 — Terraform / Code Generator LLM (always Ollama)
+    agent3_model: str = "qwen3.5"        # primary model for heavy tasks
+    agent3_fast_model: str = "qwen3.5"   # lighter tasks (code fixing, test gen)
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
