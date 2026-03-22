@@ -52,7 +52,8 @@ export interface GeneratedFile {
   path: string;
   lang: string;
   status: 'new' | 'modified' | 'pending';
-  lines: Array<{ content: string; highlight: boolean }>;
+  nodeId?: string;
+  lines: Array<{ content: string }>;
 }
 
 // ── Store interface ───────────────────────────────────────────────────────────
@@ -190,7 +191,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
   updateFileStatus: (id, status) =>
     set((state) => {
       const existing = state.generatedFiles[id];
-      if (!existing) return {};
+      if (!existing) return state;
       return {
         generatedFiles: {
           ...state.generatedFiles,
@@ -238,7 +239,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
 
   updateNodeDeployStatus: (nodeId, status) =>
     set((state) => {
-      if (!state.architectureData) return {};
+      if (!state.architectureData) return state;
       return {
         architectureData: {
           ...state.architectureData,
