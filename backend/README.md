@@ -5,7 +5,7 @@ FastAPI backend with a LangGraph-based multi-agent workflow in `app/agents/agent
 ## What Was Added
 
 - PRD refinement workflow powered by local Ollama + Qwen model.
-- Optional web research via DuckDuckGo (`langchain-community`).
+- Optional web research via TinyFish (primary) with DuckDuckGo fallback.
 - **Multi-choice options** for user clarifications (like GitHub Copilot planning mode):
   - Agent generates 2-4 predefined options per question
   - Last option always allows custom user input
@@ -25,6 +25,8 @@ Important settings:
 - `OLLAMA_BASE_URL` (default: `http://localhost:11434`)
 - `QWEN_MODEL` (default: `qwen3.5:latest`)
 - `ENABLE_WEB_SEARCH` (`true`/`false`)
+- `ENABLE_TINYFISH_SEARCH` (`true`/`false`)
+- `TINYFISH_TIMEOUT_SECONDS` (default: `25`)
 - `MAX_CLARIFICATION_ROUNDS`
 
 ## Run

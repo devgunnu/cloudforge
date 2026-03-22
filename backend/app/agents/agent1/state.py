@@ -29,6 +29,8 @@ class QuestionOption(BaseModel):
 
     label: str = ""
     value: str = ""
+    description: str = ""
+    impact: str = ""
     is_custom: bool = False
 
 
@@ -95,6 +97,8 @@ class AgentState(BaseModel):
     questions_with_options: list[QuestionWithOptions] = Field(default_factory=list)
     # User-selected answers mapped by question index or question text.
     selected_option_answers: dict[int, str] = Field(default_factory=dict)
+    # Structured Q&A pairs of (question, answer) to track clarifications with context.
+    answered_qa_pairs: list[tuple[str, str]] = Field(default_factory=list)
     # Query plan used by research node to fetch official cloud docs.
     research_queries: list[str] = Field(default_factory=list)
     # Evidence snippets retained for grounded planning.

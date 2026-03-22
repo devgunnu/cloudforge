@@ -81,8 +81,16 @@ def display_questions_with_options(state: AgentState) -> None:
         for opt_idx, option in enumerate(question.options):
             if option.is_custom:
                 print_white(f"   - Custom input: (type your own answer)")
+                if option.description:
+                    print_white(f"     Description: {option.description}")
+                if option.impact:
+                    print_white(f"     Impact: {option.impact}")
             else:
                 print_white(f"   - {option.label}")
+                if option.description:
+                    print_white(f"     Description: {option.description}")
+                if option.impact:
+                    print_white(f"     Impact: {option.impact}")
 
 
 def _normalize(value: str) -> str:
@@ -95,7 +103,14 @@ def process_option_selection_by_text(state: AgentState, question_idx: int, user_
     normalized_input = _normalize(user_input)
 
     for option in question.options:
-        if _normalize(option.label) == normalized_input or _normalize(option.value) == normalized_input:
+        option_label = _normalize(option.label)
+        option_value = _normalize(option.value)
+        if (
+            option_label == normalized_input
+            or option_value == normalized_input
+            or normalized_input in option_label
+            or option_label in normalized_input
+        ):
             state.selected_option_answers[question_idx] = option.value
             logger.info("User matched option text for question %s: %s", question_idx + 1, option.label)
             return

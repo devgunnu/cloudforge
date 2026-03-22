@@ -2,8 +2,15 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { FolderOpen, Clock, Settings, CreditCard, ChevronLeft, ChevronRight } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { FolderOpen, Clock, Settings, CreditCard, ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
+import { useAuthStore } from '@/store/useAuthStore';
+
+const sidebarNavStyles = `
+.sidebar-nav::-webkit-scrollbar { width: 3px; }
+.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: var(--lp-border-hover); border-radius: 99px; }
+`;
 
 interface NavItem {
   label: string;
@@ -20,7 +27,15 @@ const NAV_ITEMS: NavItem[] = [
 
 export default function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const logout = useAuthStore((state) => state.logout);
+
+  function handleSignOut() {
+    logout();
+    router.push('/login');
+  }
 
   useEffect(() => {
     setCollapsed(localStorage.getItem('sidebar-collapsed') === 'true');
@@ -34,6 +49,7 @@ export default function AppSidebar() {
   }
 
   return (
+    <>
     <aside
       style={{
         width: collapsed ? '52px' : '220px',
@@ -136,7 +152,7 @@ export default function AppSidebar() {
       </div>
 
       {/* Nav links */}
-      <nav aria-label="Main navigation">
+      <nav aria-label="Main navigation" className="sidebar-nav" style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         <ul
           style={{
             listStyle: 'none',
@@ -158,76 +174,144 @@ export default function AppSidebar() {
         </ul>
       </nav>
 
-      {/* Spacer */}
-      <div style={{ flex: 1 }} aria-hidden="true" />
-
       {/* User row */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'flex-start',
-          gap: '8px',
-          padding: '8px 4px',
-        }}
-      >
-        <div
-          aria-label="User avatar"
-          style={{
-            width: '24px',
-            height: '24px',
-            borderRadius: '50%',
-            background: 'var(--lp-elevated)',
-            border: '0.5px solid var(--lp-border-hover)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-            fontSize: '11px',
-            fontWeight: 600,
-            color: 'var(--lp-text-secondary)',
-            fontFamily: 'var(--font-inter), system-ui, sans-serif',
-          }}
-        >
-          GS
-        </div>
-        <span
-          style={{
-            fontFamily: 'var(--font-inter), system-ui, sans-serif',
-            fontSize: '12px',
-            fontWeight: 500,
-            color: 'var(--lp-text-primary)',
-            flex: 1,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            opacity: collapsed ? 0 : 1,
-            maxWidth: collapsed ? 0 : '100px',
-            transition: 'opacity 150ms ease, max-width 200ms ease',
-          }}
-        >
-          Gunbir S.
-        </span>
-        {!collapsed && (
-          <span
+      <div style={{ position: 'relative' }}>
+        {menuOpen && (
+          <div
+            role="menu"
             style={{
-              fontFamily: 'var(--font-inter), system-ui, sans-serif',
-              fontSize: '10px',
-              fontWeight: 500,
-              letterSpacing: '0.04em',
-              color: 'var(--lp-accent)',
-              background: 'var(--lp-accent-dim)',
+              position: 'absolute',
+              bottom: '100%',
+              left: 0,
+              marginBottom: '4px',
+              background: 'var(--lp-elevated)',
               border: '0.5px solid var(--lp-border-hover)',
-              borderRadius: '100px',
-              padding: '1px 6px',
-              flexShrink: 0,
+              borderRadius: '10px',
+              padding: '4px',
+              minWidth: '160px',
+              zIndex: 50,
             }}
           >
-            Pro
-          </span>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={handleSignOut}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                width: '100%',
+                padding: '6px 8px',
+                borderRadius: '7px',
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                fontFamily: 'var(--font-inter), system-ui, sans-serif',
+                fontSize: '13px',
+                fontWeight: 500,
+                color: '#f87171',
+                textAlign: 'left',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = 'var(--lp-surface)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+              }}
+            >
+              <LogOut size={13} aria-hidden="true" />
+              Sign out
+            </button>
+          </div>
         )}
+        <button
+          type="button"
+          aria-label="User menu"
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((v) => !v)}
+          onBlur={() => {
+            setTimeout(() => setMenuOpen(false), 150);
+          }}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            width: '100%',
+            padding: 0,
+            textAlign: 'left',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              gap: '8px',
+              padding: '8px 4px',
+            }}
+          >
+            <div
+              aria-label="User avatar"
+              style={{
+                width: '24px',
+                height: '24px',
+                borderRadius: '50%',
+                background: 'var(--lp-elevated)',
+                border: '0.5px solid var(--lp-border-hover)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                fontSize: '11px',
+                fontWeight: 600,
+                color: 'var(--lp-text-secondary)',
+                fontFamily: 'var(--font-inter), system-ui, sans-serif',
+              }}
+            >
+              GS
+            </div>
+            <span
+              style={{
+                fontFamily: 'var(--font-inter), system-ui, sans-serif',
+                fontSize: '12px',
+                fontWeight: 500,
+                color: 'var(--lp-text-primary)',
+                flex: 1,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                opacity: collapsed ? 0 : 1,
+                maxWidth: collapsed ? 0 : '100px',
+                transition: 'opacity 150ms ease, max-width 200ms ease',
+              }}
+            >
+              Gunbir S.
+            </span>
+            {!collapsed && (
+              <span
+                style={{
+                  fontFamily: 'var(--font-inter), system-ui, sans-serif',
+                  fontSize: '10px',
+                  fontWeight: 500,
+                  letterSpacing: '0.04em',
+                  color: 'var(--lp-accent)',
+                  background: 'var(--lp-accent-dim)',
+                  border: '0.5px solid var(--lp-border-hover)',
+                  borderRadius: '100px',
+                  padding: '1px 6px',
+                  flexShrink: 0,
+                }}
+              >
+                Pro
+              </span>
+            )}
+          </div>
+        </button>
       </div>
     </aside>
+    <style>{sidebarNavStyles}</style>
+    </>
   );
 }
 
