@@ -93,7 +93,7 @@ def _skip_if_rate_limited(result: dict) -> bool | None:
     """
     if _rate_limited(result):
         errors = result.get("pipeline_errors") or []
-        _warn("Groq quota/rate-limit hit — scenario skipped (not a code failure)")
+        _warn("Groq quota/rate-limit hit -- scenario skipped (not a code failure)")
         _info(f"Rate-limit error: {errors[0][:120]}..." if errors else "")
         return True
     return None
@@ -135,7 +135,7 @@ def _build_state(topology: dict, *, fmt: str = "json", **overrides) -> dict[str,
 
 
 def _to_yaml(data: dict) -> str:
-    """Minimal dict → YAML converter (no external dep needed here)."""
+    """Minimal dict -> YAML converter (no external dep needed here)."""
     import yaml
     return yaml.dump(data, default_flow_style=False)
 
@@ -154,7 +154,7 @@ def _run(graph, state: dict[str, Any]) -> dict[str, Any]:
 
 
 def test_single_lambda(graph) -> bool:
-    _hdr("SCENARIO 1 — Single Lambda function (simplest full flow)")
+    _hdr("SCENARIO 1 -- Single Lambda function (simplest full flow)")
     topology = {
         "services": [
             {
@@ -216,7 +216,7 @@ def test_single_lambda(graph) -> bool:
 
 
 def test_multi_service_with_connections(graph) -> bool:
-    _hdr("SCENARIO 2 — Lambda + DynamoDB + API Gateway (connected topology)")
+    _hdr("SCENARIO 2 -- Lambda + DynamoDB + API Gateway (connected topology)")
     topology = {
         "services": [
             {
@@ -286,7 +286,7 @@ def test_multi_service_with_connections(graph) -> bool:
 
 
 def test_yaml_input(graph) -> bool:
-    _hdr("SCENARIO 3 — YAML input format")
+    _hdr("SCENARIO 3 -- YAML input format")
     topology = {
         "services": [
             {
@@ -316,7 +316,7 @@ def test_yaml_input(graph) -> bool:
 
 
 def test_language_override(graph) -> bool:
-    _hdr("SCENARIO 4 — Per-service language override (lambda → TypeScript)")
+    _hdr("SCENARIO 4 -- Per-service language override (lambda -> TypeScript)")
     topology = {
         "services": [
             {
@@ -350,7 +350,7 @@ def test_language_override(graph) -> bool:
 
 
 def test_invalid_json_input(graph) -> bool:
-    _hdr("SCENARIO 5 — Invalid JSON input (error handling)")
+    _hdr("SCENARIO 5 -- Invalid JSON input (error handling)")
     state = _build_state({})
     state["raw_input"] = "{ this is not valid json !!!"
     result = _run(graph, state)
@@ -364,7 +364,7 @@ def test_invalid_json_input(graph) -> bool:
 
 
 def test_empty_services(graph) -> bool:
-    _hdr("SCENARIO 6 — Empty services list (validation error)")
+    _hdr("SCENARIO 6 -- Empty services list (validation error)")
     topology = {"services": [], "connections": []}
     result = _run(graph, _build_state(topology))
 
@@ -377,7 +377,7 @@ def test_empty_services(graph) -> bool:
 
 
 def test_unknown_service_type_warning(graph) -> bool:
-    _hdr("SCENARIO 7 — Unknown service type (warning, not error)")
+    _hdr("SCENARIO 7 -- Unknown service type (warning, not error)")
     topology = {
         "services": [
             {
@@ -408,7 +408,7 @@ def test_unknown_service_type_warning(graph) -> bool:
 
 
 def test_human_review_on_zero_retries(graph) -> bool:
-    _hdr("SCENARIO 8 — Human-in-the-loop (tf_max_retries=0)")
+    _hdr("SCENARIO 8 -- Human-in-the-loop (tf_max_retries=0)")
     topology = {
         "services": [
             {
@@ -434,7 +434,7 @@ def test_human_review_on_zero_retries(graph) -> bool:
             passed = True
             _warn(
                 f"human_review_required=False (TF tools likely not installed, "
-                f"validation auto-passed — phase={phase})"
+                f"validation auto-passed -- phase={phase})"
             )
         _info(f"tf_validated: {result.get('tf_validated')}")
         _info(f"tf_fix_attempts: {result.get('tf_fix_attempts')}")
@@ -450,7 +450,7 @@ def test_human_review_on_zero_retries(graph) -> bool:
 
 
 def test_multiple_services_no_code_gen(graph) -> bool:
-    _hdr("SCENARIO 9 — S3 + RDS only (services without code gen in language map)")
+    _hdr("SCENARIO 9 -- S3 + RDS only (services without code gen in language map)")
     topology = {
         "services": [
             {
@@ -501,7 +501,7 @@ def test_multiple_services_no_code_gen(graph) -> bool:
 
 
 def test_parse_only_smoke(graph) -> bool:
-    _hdr("SCENARIO 10 — Parse + task list smoke check")
+    _hdr("SCENARIO 10 -- Parse + task list smoke check")
     topology = {
         "services": [
             {"id": "a", "service_type": "lambda", "label": "A", "config": {}},
@@ -534,10 +534,10 @@ def test_parse_only_smoke(graph) -> bool:
 def main() -> None:
     print("\n" + "=" * 72)
     print("  AGENT3 FULL-FLOW INTEGRATION TEST SUITE")
-    print("  Model: llama-3.3-70b-versatile (Groq)")
+    print("  Model: configured via .env (Ollama)")
     print("=" * 72)
 
-    # Compile graph once — reused across all tests
+    # Compile graph once -- reused across all tests
     print("\nCompiling graph...")
     t_compile = time.time()
     graph = compile_graph()
@@ -557,7 +557,7 @@ def main() -> None:
         test_single_lambda,
         # --- Full pipelines, multiple services (heavier quota) ---
         test_parse_only_smoke,
-        test_multi_service_with_connections,  # heaviest — always last
+        test_multi_service_with_connections,  # heaviest -- always last
     ]
 
     results: list[tuple[str, bool]] = []

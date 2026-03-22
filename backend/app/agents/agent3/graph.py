@@ -4,6 +4,7 @@ import threading
 from typing import Any, Literal
 
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 
 from app.agents.agent3.nodes.assembler import assembler_node, error_handler_node
@@ -63,7 +64,21 @@ def _make_tf_validation_node(compiled_tf_subgraph: Any):
 
     def tf_validation_node(state: AgentState) -> dict[str, Any]:
         sub_input = _tf_subgraph_input(state)
-        sub_result = compiled_tf_subgraph.invoke(sub_input)
+        try:
+            sub_result = compiled_tf_subgraph.invoke(sub_input)
+        except GraphInterrupt:
+            # Subgraph interrupted for human review (max fix retries exhausted).
+            # Map to proper state so the parent graph continues to assembler
+            # with partial (unvalidated) output instead of halting entirely.
+            sub_result = {
+                **sub_input,
+                "human_review_required": True,
+                "validated": False,
+                "human_review_message": (
+                    f"Terraform validation failed after {sub_input.get('fix_attempts', 0)} "
+                    f"fix attempts. Errors:\n{sub_input.get('error_summary') or 'unknown'}"
+                ),
+            }
         return _tf_subgraph_output(sub_result)
 
     return tf_validation_node
@@ -85,17 +100,14 @@ def _route_after_tf_generation(state: AgentState) -> Literal["tf_validation_loop
 def _route_after_tf_validation(
     state: AgentState,
 ) -> Literal["orchestrator", "assembler", "error_handler"]:
-    if state.get("human_review_required"):
-        return "assembler"  # partial output with human_review flag
     if state.get("current_phase") == "error":
         return "error_handler"
-    if state.get("tf_validated"):
-        # Skip orchestrator entirely for infra-only architectures with no code tasks
-        task_list = state.get("task_list") or []
-        if not task_list:
-            return "assembler"
+    # Proceed to orchestrator whenever there are pending code tasks,
+    # regardless of TF validation result. Code generation uses TF files
+    # as context but does not require them to be fully validated.
+    task_list = state.get("task_list") or []
+    if task_list:
         return "orchestrator"
-    # TF never validated and no human flag means something odd — assemble partial
     return "assembler"
 
 

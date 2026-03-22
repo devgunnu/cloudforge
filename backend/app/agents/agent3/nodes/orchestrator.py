@@ -1,31 +1,27 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from langchain_core.messages import HumanMessage
-from langchain_core.tools import tool
-from langgraph.prebuilt import create_react_agent
-
-from app.agents.agent3.config import CODE_MAX_RETRIES, EXT_MAP, RECURSION_STEPS_PER_TASK
-from app.agents.agent3.llm import get_default_llm
-from app.agents.agent3.prompts.orchestrator_prompts import orchestrator_system
+from app.agents.agent3.config import CODE_MAX_RETRIES, EXT_MAP
 from app.agents.agent3.state import AgentState, CodeError, CodeGenState, TaskItem
 from app.agents.agent3.tools.task_tools import (
-    build_architecture_summary,
     describe_service,
     extract_tf_context_for_service,
 )
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
-# Mutable context shared between tool closures and the orchestrator node
+# Mutable context shared across code-gen invocations
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class _OrchestratorCtx:
-    """All mutable state updated by tools during an orchestrator invocation."""
+    """All mutable state updated during an orchestrator invocation."""
 
     code_files: dict[str, str] = field(default_factory=dict)
     test_files: dict[str, str] = field(default_factory=dict)
@@ -50,7 +46,7 @@ class _OrchestratorCtx:
 
 
 def _build_arch_ctx_json(state: AgentState, service_id: str) -> str:
-    """Build a JSON context blob for a single service (used inside tool closures)."""
+    """Build a JSON context blob for a single service."""
     services = state.get("services", [])
     connections = state.get("connections", [])
     svc = next((s for s in services if s["id"] == service_id), None)
@@ -75,184 +71,154 @@ def _build_arch_ctx_json(state: AgentState, service_id: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Tool factory — builds @tool functions closed over ctx + state + code_subgraph
+# Direct code/test generation (no tool-calling LLM required)
 # ---------------------------------------------------------------------------
 
 
-def _build_tools(ctx: _OrchestratorCtx, state: AgentState, code_subgraph: Any) -> list:
-    """Return a list of @tool functions with shared context injected via closure."""
+def _run_code_gen(
+    ctx: _OrchestratorCtx,
+    state: AgentState,
+    code_subgraph: Any,
+    service_id: str,
+    task: TaskItem,
+) -> None:
+    """Generate application code for a service via the code-generation subgraph."""
+    language = task["language"]
+    ext = EXT_MAP.get(language, language)
+    ctx.set_task_status(task["task_id"], "in_progress")
 
-    @tool
-    def get_pending_tasks() -> str:
-        """Return a JSON list of all pending tasks (code_gen and test_gen)."""
-        pending = [t for t in ctx.task_list if t["status"] == "pending"]
-        return json.dumps(pending, indent=2) if pending else "[]"
+    arch_ctx = _build_arch_ctx_json(state, service_id)
+    tf_ctx = extract_tf_context_for_service(state.get("tf_files", {}), service_id)
 
-    @tool
-    def get_architecture_summary() -> str:
-        """Return a human-readable summary of the cloud architecture and service dependencies."""
-        return build_architecture_summary(
-            state.get("services", []), state.get("connections", [])
-        )
+    sub_state = CodeGenState(
+        task=TaskItem(
+            task_id=task["task_id"],
+            service_id=service_id,
+            task_type="code_gen",
+            language=language,
+            status="in_progress",
+            retry_count=task["retry_count"],
+            error_message=None,
+        ),
+        tf_context=tf_ctx,
+        architecture_context=arch_ctx,
+        generated_code=None,
+        generated_tests=None,
+        syntax_errors=[],
+        fix_attempts=0,
+        max_retries=CODE_MAX_RETRIES,
+        done=False,
+        human_review_required=False,
+        human_review_message=None,
+    )
 
-    @tool
-    def generate_service_code(service_id: str, language: str) -> str:
-        """
-        Generate application code for the specified cloud service.
-        Returns the generated file path on success, or an error description.
-        """
-        task = ctx.find_task(service_id, "code_gen")
-        if task is None:
-            return f"ERROR: No code_gen task found for service_id='{service_id}'"
+    try:
+        result = code_subgraph.invoke(sub_state)
+        code = result.get("generated_code")
 
-        ctx.set_task_status(task["task_id"], "in_progress")
-
-        ext = EXT_MAP.get(language, language)
-        arch_ctx = _build_arch_ctx_json(state, service_id)
-        tf_ctx = extract_tf_context_for_service(state.get("tf_files", {}), service_id)
-
-        sub_state = CodeGenState(
-            task=TaskItem(
-                task_id=task["task_id"],
-                service_id=service_id,
-                task_type="code_gen",
-                language=language,
-                status="in_progress",
-                retry_count=task["retry_count"],
-                error_message=None,
-            ),
-            tf_context=tf_ctx,
-            architecture_context=arch_ctx,
-            generated_code=None,
-            generated_tests=None,
-            syntax_errors=[],
-            fix_attempts=0,
-            max_retries=CODE_MAX_RETRIES,
-            done=False,
-            human_review_required=False,
-            human_review_message=None,
-        )
-
-        try:
-            result = code_subgraph.invoke(sub_state)
-            code = result.get("generated_code")
-
-            if not code:
-                errors = result.get("syntax_errors") or ["unknown error"]
-                ctx.set_task_status(task["task_id"], "failed", error="; ".join(errors))
-                ctx.code_errors.append(
-                    CodeError(
-                        service_id=service_id,
-                        task_type="code_gen",
-                        file=f"services/{service_id}/handler.{ext}",
-                        errors=errors,
-                    )
-                )
-                return f"FAILED: {'; '.join(errors)}"
-
-            file_path = f"services/{service_id}/handler.{ext}"
-            ctx.code_files[file_path] = code
-            ctx.set_task_status(task["task_id"], "done")
-            return f"OK: {file_path}"
-        except Exception as e:
-            error_msg = str(e)
-            ctx.set_task_status(task["task_id"], "failed", error=error_msg)
+        if not code:
+            errors = result.get("syntax_errors") or ["unknown error"]
+            ctx.set_task_status(task["task_id"], "failed", error="; ".join(errors))
             ctx.code_errors.append(
                 CodeError(
                     service_id=service_id,
                     task_type="code_gen",
                     file=f"services/{service_id}/handler.{ext}",
-                    errors=[error_msg],
+                    errors=errors,
                 )
             )
-            return f"ERROR: {error_msg}"
+            return
 
-    @tool
-    def generate_service_tests(service_id: str, language: str) -> str:
-        """
-        Generate unit tests for the specified service.
-        Requires generate_service_code to be called first for this service.
-        Returns the generated test file path on success, or an error description.
-        """
-        # Enforce ordering: code must exist before tests can be generated
-        code_task = ctx.find_task(service_id, "code_gen")
-        if code_task is not None and code_task["status"] != "done":
-            return (
-                f"ERROR: Cannot generate tests for '{service_id}' — "
-                f"code_gen task is '{code_task['status']}'. "
-                "Call generate_service_code first."
+        file_path = f"services/{service_id}/handler.{ext}"
+        ctx.code_files[file_path] = code
+        ctx.set_task_status(task["task_id"], "done")
+        logger.info("code_gen OK: %s", file_path)
+    except Exception as e:
+        error_msg = str(e)
+        ctx.set_task_status(task["task_id"], "failed", error=error_msg)
+        ctx.code_errors.append(
+            CodeError(
+                service_id=service_id,
+                task_type="code_gen",
+                file=f"services/{service_id}/handler.{ext}",
+                errors=[error_msg],
             )
+        )
+        logger.warning("code_gen FAILED for %s: %s", service_id, error_msg)
 
-        ext = EXT_MAP.get(language, language)
-        code_path = f"services/{service_id}/handler.{ext}"
-        source_code = ctx.code_files.get(code_path, "")
 
-        task = ctx.find_task(service_id, "test_gen")
-        if task is None:
-            return f"ERROR: No test_gen task found for service_id='{service_id}'"
+def _run_test_gen(
+    ctx: _OrchestratorCtx,
+    state: AgentState,
+    code_subgraph: Any,
+    service_id: str,
+    task: TaskItem,
+) -> None:
+    """Generate unit tests for a service via the code-generation subgraph."""
+    language = task["language"]
+    ext = EXT_MAP.get(language, language)
 
-        ctx.set_task_status(task["task_id"], "in_progress")
-        arch_ctx = _build_arch_ctx_json(state, service_id)
+    code_path = f"services/{service_id}/handler.{ext}"
+    source_code = ctx.code_files.get(code_path, "")
 
-        # Reuse the code_generation subgraph with test_gen task type
-        sub_state = CodeGenState(
-            task=TaskItem(
-                task_id=task["task_id"],
+    ctx.set_task_status(task["task_id"], "in_progress")
+    arch_ctx = _build_arch_ctx_json(state, service_id)
+
+    sub_state = CodeGenState(
+        task=TaskItem(
+            task_id=task["task_id"],
+            service_id=service_id,
+            task_type="test_gen",
+            language=language,
+            status="in_progress",
+            retry_count=task["retry_count"],
+            error_message=None,
+        ),
+        tf_context="",
+        architecture_context=arch_ctx,
+        generated_code=source_code,
+        generated_tests=None,
+        syntax_errors=[],
+        fix_attempts=0,
+        max_retries=CODE_MAX_RETRIES,
+        done=False,
+        human_review_required=False,
+        human_review_message=None,
+    )
+
+    try:
+        result = code_subgraph.invoke(sub_state)
+        tests = result.get("generated_tests")
+
+        if not tests:
+            errors = result.get("syntax_errors") or ["unknown error"]
+            ctx.set_task_status(task["task_id"], "failed", error="; ".join(errors))
+            ctx.code_errors.append(
+                CodeError(
+                    service_id=service_id,
+                    task_type="test_gen",
+                    file=f"services/{service_id}/test_handler.{ext}",
+                    errors=errors,
+                )
+            )
+            return
+
+        test_path = f"services/{service_id}/test_handler.{ext}"
+        ctx.test_files[test_path] = tests
+        ctx.set_task_status(task["task_id"], "done")
+        logger.info("test_gen OK: %s", test_path)
+    except Exception as e:
+        error_msg = str(e)
+        ctx.set_task_status(task["task_id"], "failed", error=error_msg)
+        ctx.code_errors.append(
+            CodeError(
                 service_id=service_id,
                 task_type="test_gen",
-                language=language,
-                status="in_progress",
-                retry_count=task["retry_count"],
-                error_message=None,
-            ),
-            tf_context="",
-            architecture_context=arch_ctx,
-            generated_code=source_code,
-            generated_tests=None,
-            syntax_errors=[],
-            fix_attempts=0,
-            max_retries=CODE_MAX_RETRIES,
-            done=False,
-            human_review_required=False,
-            human_review_message=None,
+                file=f"services/{service_id}/test_handler.{ext}",
+                errors=[error_msg],
+            )
         )
-
-        try:
-            result = code_subgraph.invoke(sub_state)
-            tests = result.get("generated_tests")
-
-            if not tests:
-                errors = result.get("syntax_errors") or ["unknown error"]
-                ctx.set_task_status(task["task_id"], "failed", error="; ".join(errors))
-                ctx.code_errors.append(
-                    CodeError(
-                        service_id=service_id,
-                        task_type="test_gen",
-                        file=f"services/{service_id}/test_handler.{ext}",
-                        errors=errors,
-                    )
-                )
-                return f"FAILED: {'; '.join(errors)}"
-
-            test_path = f"services/{service_id}/test_handler.{ext}"
-            ctx.test_files[test_path] = tests
-            ctx.set_task_status(task["task_id"], "done")
-            return f"OK: {test_path}"
-        except Exception as e:
-            error_msg = str(e)
-            ctx.set_task_status(task["task_id"], "failed", error=error_msg)
-            return f"ERROR: {error_msg}"
-
-    @tool
-    def mark_task_done(task_id: str) -> str:
-        """Explicitly mark a specific task as done by its task_id."""
-        task = next((t for t in ctx.task_list if t["task_id"] == task_id), None)
-        if task is None:
-            return f"ERROR: Task '{task_id}' not found"
-        ctx.set_task_status(task_id, "done")
-        return f"OK: Task '{task_id}' marked done"
-
-    return [get_pending_tasks, get_architecture_summary, generate_service_code, generate_service_tests, mark_task_done]
+        logger.warning("test_gen FAILED for %s: %s", service_id, error_msg)
 
 
 # ---------------------------------------------------------------------------
@@ -261,10 +227,14 @@ def _build_tools(ctx: _OrchestratorCtx, state: AgentState, code_subgraph: Any) -
 
 
 def make_orchestrator_node(compiled_code_subgraph: Any):
-    """Factory: returns a LangGraph node function closed over the compiled code subgraph."""
+    """Factory: returns a LangGraph node function closed over the compiled code subgraph.
+
+    Uses direct invocation instead of a ReAct agent — the orchestration logic
+    is deterministic (iterate services, code before tests) and does not require
+    tool-calling LLM support.
+    """
 
     def orchestrator_node(state: AgentState) -> dict[str, Any]:
-        # Seed context from current state (handles multi-iteration correctly)
         ctx = _OrchestratorCtx(
             code_files=dict(state.get("code_files") or {}),
             test_files=dict(state.get("test_files") or {}),
@@ -272,61 +242,37 @@ def make_orchestrator_node(compiled_code_subgraph: Any):
             code_errors=[],
         )
 
-        tools = _build_tools(ctx, state, compiled_code_subgraph)
+        # Collect unique service IDs in task-list order
+        seen: set[str] = set()
+        service_ids: list[str] = []
+        for task in ctx.task_list:
+            sid = task["service_id"]
+            if sid not in seen:
+                seen.add(sid)
+                service_ids.append(sid)
 
-        # Build dynamic system prompt with current architecture + TF context
-        arch_summary = build_architecture_summary(
-            state.get("services", []), state.get("connections", [])
-        )
-        system_prompt = orchestrator_system(
-            architecture_summary=arch_summary,
-            tf_file_names=list(state.get("tf_files", {}).keys()),
-        )
+        # Process each service: generate code first, then tests
+        for service_id in service_ids:
+            code_task = ctx.find_task(service_id, "code_gen")
+            test_task = ctx.find_task(service_id, "test_gen")
 
-        # `prompt` is the current API (state_modifier is deprecated in langgraph-prebuilt 1.x)
-        agent = create_react_agent(get_default_llm(), tools, prompt=system_prompt)
+            # --- Code generation ---
+            if code_task and code_task["status"] == "pending":
+                _run_code_gen(ctx, state, compiled_code_subgraph, service_id, code_task)
 
-        # Build initial message if this is the first orchestrator iteration.
-        # Plain-language description avoids confusing the LLM about tool call syntax.
-        prior_messages = list(state.get("orchestrator_messages") or [])
-        if not prior_messages:
-            pending_count = sum(1 for t in ctx.task_list if t["status"] == "pending")
-            prior_messages = [
-                HumanMessage(
-                    content=(
-                        f"Start generating code. There are {pending_count} pending tasks. "
-                        "Use the get_pending_tasks tool first to see the full task list, "
-                        "then work through each service systematically."
+            # --- Test generation (only if code succeeded) ---
+            if test_task and test_task["status"] == "pending":
+                code_task_now = ctx.find_task(service_id, "code_gen")
+                if code_task_now is None or code_task_now["status"] == "done":
+                    _run_test_gen(ctx, state, compiled_code_subgraph, service_id, test_task)
+                else:
+                    ctx.set_task_status(
+                        test_task["task_id"],
+                        "failed",
+                        error="Skipped: code_gen did not complete successfully",
                     )
-                )
-            ]
 
-        # Compute a recursion limit that scales with actual task count.
-        # Each task needs ~RECURSION_STEPS_PER_TASK super-steps (LLM call + tool call per step).
-        # We take the max of the user-configured floor and the task-count-based estimate.
-        max_iter = state.get("orchestrator_max_iterations", 10)
-        num_tasks = len(ctx.task_list)
-        recursion_limit = max(
-            max_iter * RECURSION_STEPS_PER_TASK,        # user-configured floor
-            num_tasks * RECURSION_STEPS_PER_TASK + 10,  # task-count-based estimate
-        )
-
-        agent_messages = prior_messages
-        agent_error: str | None = None
-        try:
-            agent_result = agent.invoke(
-                {"messages": prior_messages},
-                config={"recursion_limit": recursion_limit},
-            )
-            agent_messages = agent_result["messages"]
-        except Exception as e:
-            # The agent can fail due to model tool-call format errors or transient API
-            # issues. We preserve whatever partial state was accumulated in ctx and
-            # surface the error so the pipeline can still assemble partial artifacts.
-            agent_error = str(e)
-
-        partial = {
-            "orchestrator_messages": agent_messages,
+        return {
             "code_files": ctx.code_files,
             "test_files": ctx.test_files,
             "task_list": ctx.task_list,
@@ -334,8 +280,5 @@ def make_orchestrator_node(compiled_code_subgraph: Any):
             "orchestrator_iterations": state.get("orchestrator_iterations", 0) + 1,
             "current_phase": "assembly",
         }
-        if agent_error:
-            partial["pipeline_errors"] = [f"Orchestrator agent error: {agent_error}"]
-        return partial
 
     return orchestrator_node
