@@ -276,10 +276,10 @@ Wire in graph: `test_orchestrator → completeness_checker → assembler`
 ### `nodes/infra_codegen_worker.py`
 - Handles `TaskItem` with `task_type == "infra_gen"`
 - Each task corresponds to one CDK stack file (e.g., `infrastructure/lib/stacks/api-stack.ts`)
-- Uses `cdk_stack_systemjinja2` + `cdk_stack_userjinja2` to prompt LLM
+- Uses `cdk_stack_system.jinja2` + `cdk_stack_user.jinja2` to prompt LLM
 - Returns `{"tf_files": {stack_path: stack_content}}` (reusing tf_files dict for CDK stacks)
 
-### `prompts/templates/cdk_stack_systemjinja2`
+### `prompts/templates/cdk_stack_system.jinja2`
 Rules for LLM:
 - Use L2 constructs only
 - `RemovalPolicy.RETAIN` for stateful resources (RDS, DynamoDB, S3)
@@ -287,7 +287,7 @@ Rules for LLM:
 - For Amplify stack: use `aws_amplify.CfnApp` + `aws_amplify.CfnBranch`
 - Import everything from `aws-cdk-lib`
 
-### `prompts/templates/cdk_stack_userjinja2`
+### `prompts/templates/cdk_stack_user.jinja2`
 Variables: `stack_name`, `stack_file_path`, `services_in_stack`, `all_services`, `connections`, `project_name`
 
 ### Update `manager_agent.py`
@@ -324,17 +324,17 @@ builder.add_node("infra_codegen_worker", infra_codegen_worker_node)
 ### `nodes/frontend_codegen_worker.py`
 - Handles `TaskItem` with `task_type == "frontend_gen"`
 - Generates `frontend/src/App.tsx` and similar LLM frontend files
-- Uses `frontend_systemjinja2` + `frontend_userjinja2`
+- Uses `frontend_system.jinja2` + `frontend_user.jinja2`
 - Returns generated content into `code_files`
 
-### `prompts/templates/frontend_systemjinja2`
+### `prompts/templates/frontend_system.jinja2`
 Rules:
 - React 18, TypeScript strict
 - Fetch from `import.meta.env.VITE_API_URL`
 - Always handle loading + error states
 - Use functional components + hooks only
 
-### `prompts/templates/frontend_userjinja2`
+### `prompts/templates/frontend_user.jinja2`
 Variables: `file_path`, `project_name`, `api_endpoints`, `services`, `connections`
 
 ### Wire in `graph.py`

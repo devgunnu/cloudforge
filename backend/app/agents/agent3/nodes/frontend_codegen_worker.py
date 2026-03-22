@@ -59,7 +59,7 @@ def frontend_codegen_worker_node(state: dict[str, Any]) -> dict[str, Any]:
 
     Reads a frontend_task whose service_id holds the file path
     (e.g. 'frontend/src/App.tsx'), calls the LLM with
-    frontend_systemjinja2 + frontend_userjinja2, and returns the content
+    frontend_system.jinja2 + frontend_user.jinja2, and returns the content
     merged into code_files.
     """
     task: TaskItem = state["frontend_task"]
@@ -72,9 +72,9 @@ def frontend_codegen_worker_node(state: dict[str, Any]) -> dict[str, Any]:
     file_path: str = task["service_id"]
 
     try:
-        system_prompt = render("frontend_systemjinja2")
+        system_prompt = render("frontend_system.jinja2")
         user_prompt = render(
-            "frontend_userjinja2",
+            "frontend_user.jinja2",
             file_path=file_path,
             project_name=project_name,
             api_endpoints_json=json.dumps(api_endpoints, indent=2),

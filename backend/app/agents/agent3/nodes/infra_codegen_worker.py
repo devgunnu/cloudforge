@@ -58,7 +58,7 @@ def infra_codegen_worker_node(state: dict[str, Any]) -> dict[str, Any]:
 
     Reads an infra_task whose service_id holds the artifact file path
     (e.g. 'docker-compose.yml' or 'services/api/Dockerfile'), calls the LLM with
-    infra_scaffold_systemjinja2 + infra_scaffold_userjinja2, and returns the content
+    infra_scaffold_system.jinja2 + infra_scaffold_user.jinja2, and returns the content
     in code_files.
     """
     task: TaskItem = state["infra_task"]
@@ -70,9 +70,9 @@ def infra_codegen_worker_node(state: dict[str, Any]) -> dict[str, Any]:
     service_type: str = _get_service_type(file_path, services)
 
     try:
-        system_prompt = render("infra_scaffold_systemjinja2")
+        system_prompt = render("infra_scaffold_system.jinja2")
         user_prompt = render(
-            "infra_scaffold_userjinja2",
+            "infra_scaffold_user.jinja2",
             file_path=file_path,
             project_name=project_name,
             service_type=service_type,

@@ -146,7 +146,7 @@ class AgentState(TypedDict):
     manager_review_count: int
 
     # Code artifacts
-    code_files: dict[str, str]   # path -> content
+    code_files: Annotated[dict[str, str], lambda a, b: {**a, **b}]  # path -> content; reducer handles parallel writes
     test_files: dict[str, str]
     code_errors: Annotated[list[CodeError], add]  # append-only error log
 

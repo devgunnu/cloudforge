@@ -273,7 +273,7 @@ artifacts.update(state.get("test_files") or {})       # LLM-generated tests
 1. Create `backend/app/agents/agent3/scaffold/` package:
    - `manifest.py` — `FileManifestEntry`, `FileManifest` TypedDicts
    - `templates.py` — all Jinja2 template rendering functions
-   - `templates/` — Jinja2 `jinja2` files for each deterministic file
+   - `templates/` — Jinja2 `.jinja2` files for each deterministic file
 2. Create `nodes/scaffold_node.py`
 3. Update `state.py` — add `scaffold_files`, `file_manifest`, `project_name`
 4. Update `graph.py` — wire scaffold_node between parse_input and tf_generator

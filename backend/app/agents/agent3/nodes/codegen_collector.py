@@ -12,12 +12,16 @@ def codegen_collector_node(state: AgentState) -> dict[str, Any]:
     """Merge worker_results from parallel codegen workers into canonical state."""
     worker_results = state.get("worker_results") or []
 
-    merged_code_files: dict[str, str] = dict(state.get("code_files") or {})
+    # Do NOT seed from state["code_files"] here — the field is annotated with a
+    # dict-merge reducer, so LangGraph will automatically merge the delta we
+    # return with whatever is already accumulated in the channel.  Seeding from
+    # the existing value would double-apply previously written files.
+    merged_code_files: dict[str, str] = {}
     merged_code_errors = []
     task_list = list(state.get("task_list") or [])
 
     for wr in worker_results:
-        # Merge code files
+        # Collect code files from this worker result
         merged_code_files.update(wr.get("code_files") or {})
 
         # Collect errors

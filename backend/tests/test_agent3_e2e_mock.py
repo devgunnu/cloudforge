@@ -343,9 +343,9 @@ def _patched_infra_worker(state: dict[str, Any]) -> dict[str, Any]:
 
     code_files: dict[str, str] = {}
     try:
-        sys_p = _render("cdk_stack_systemjinja2")
+        sys_p = _render("cdk_stack_system.jinja2")
         usr_p = _render(
-            "cdk_stack_userjinja2",
+            "cdk_stack_user.jinja2",
             stack_file_path=stack_file_path,
             stack_name=stack_name,
             project_name=project_name,
@@ -404,9 +404,9 @@ def _patched_frontend_worker(state: dict[str, Any]) -> dict[str, Any]:
 
     code_files: dict[str, str] = {}
     try:
-        sys_p = _render("frontend_systemjinja2")
+        sys_p = _render("frontend_system.jinja2")
         usr_p = _render(
-            "frontend_userjinja2",
+            "frontend_user.jinja2",
             file_path=file_path,
             project_name=project_name,
             api_endpoints_json=_json.dumps(api_endpoints, indent=2),
