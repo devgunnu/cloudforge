@@ -54,6 +54,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cloud", type=str, choices=["AWS", "GCP", "Azure"], help="Cloud provider")
     parser.add_argument("--model", type=str, default="anthropic", choices=["anthropic", "ollama"])
     parser.add_argument("--model-name", type=str, default=None, help="Override default model name")
+    parser.add_argument(
+        "--terraform-mcp-cmd",
+        type=str,
+        default=None,
+        dest="terraform_mcp_cmd",
+        help=(
+            "Shell command to launch the Terraform MCP server, as a single string. "
+            "e.g. 'npx -y @hashicorp/terraform-mcp-server' or "
+            "'docker run --rm -i hashicorp/terraform-mcp-server'. "
+            "When omitted, service discovery runs LLM-only (default behavior)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -284,7 +296,9 @@ def main() -> None:
     from app.agents.architecture_planner.graph import create_graph
     from app.agents.architecture_planner.state import make_initial_state
 
-    graph = create_graph(model_type=args.model, model_name=args.model_name)
+    import shlex
+    terraform_mcp_cmd = shlex.split(args.terraform_mcp_cmd) if args.terraform_mcp_cmd else None
+    graph = create_graph(model_type=args.model, model_name=args.model_name, terraform_mcp_cmd=terraform_mcp_cmd)
     initial_state = make_initial_state(**inputs)
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}

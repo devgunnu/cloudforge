@@ -164,6 +164,7 @@ def create_graph(
     model_name: str | None = None,
     graph_json_path: str | None = None,
     community_summaries_path: str | None = None,
+    terraform_mcp_cmd: list[str] | None = None,
 ):
     """
     Build and compile the full architecture planner graph.
@@ -179,6 +180,11 @@ def create_graph(
         community_summaries_path: Path to community_summaries.json.
                                   Defaults to CLOUDFORGE_COMMUNITY_SUMMARIES env var
                                   or "community_summaries.json".
+        terraform_mcp_cmd: Command list to launch the Terraform MCP server subprocess.
+                           e.g. ["npx", "-y", "@hashicorp/terraform-mcp-server"]
+                           When None (default), service_discovery runs LLM-only.
+                           The adapter instance is created once and reused for the
+                           entire graph run.
 
     Returns:
         A compiled LangGraph graph. Requires a thread_id in the config dict
@@ -186,6 +192,12 @@ def create_graph(
     """
     import os
     llm = _build_llm(model_type, model_name)
+
+    # Terraform MCP adapter — optional, gracefully absent when not configured
+    terraform_adapter = None
+    if terraform_mcp_cmd is not None:
+        from app.agents.architecture_planner.terraform_mcp import TerraformMCPAdapter
+        terraform_adapter = TerraformMCPAdapter(cmd=terraform_mcp_cmd)
 
     # KG setup — optional; gracefully skips when graph.json is absent or kuzu not installed
     _graph_json = graph_json_path or os.environ.get("CLOUDFORGE_GRAPH_JSON", "graph.json")
@@ -207,7 +219,7 @@ def create_graph(
     builder.add_node("info_gathering", info_gathering)
     builder.add_node("query", query)
     builder.add_node("kg_traversal", kg_traversal)
-    builder.add_node("service_discovery", make_service_discovery_node(llm))
+    builder.add_node("service_discovery", make_service_discovery_node(llm, terraform_adapter=terraform_adapter))
     builder.add_node("arch_review", arch_review)
     builder.add_node("accept", accept)
 

@@ -19,13 +19,23 @@ You are a {{ cloud_provider }} solutions architect with deep, up-to-date knowled
 {{ query_results }}
 
 ---
+{% if terraform_context %}
+
+## Real Infrastructure Data (Terraform Registry)
+
+The following resource types are verified available in the official Terraform Registry for {{ cloud_provider }}. Use these as authoritative service name references when selecting services.
+
+{{ terraform_context }}
+
+---
+{% endif %}
 
 ## Instructions
 
-Based on the research summary and project constraints above, enumerate **8 to 15** specific {{ cloud_provider }} services that should be included in the architecture.
+Based on the research summary{% if terraform_context %}, the Terraform Registry data,{% endif %} and project constraints above, enumerate **8 to 15** specific {{ cloud_provider }} services that should be included in the architecture.
 
 For each service:
-- **name**: Use the official, specific service name and tier. Be precise — write "Aurora Serverless v2" not "Aurora"; "Cloud Run" not "GCP Compute"; "Azure Container Apps" not "Azure Container Service". Specific tiers and variants matter for cost and sizing.
+- **name**: Use the official, specific service name and tier. Be precise — write "Aurora Serverless v2" not "Aurora"; "Cloud Run" not "GCP Compute"; "Azure Container Apps" not "Azure Container Service". Specific tiers and variants matter for cost and sizing.{% if terraform_context %} Where a service corresponds to a Terraform resource listed above, use its official Terraform resource type name as the basis for the `name` field.{% endif %}
 - **category**: One of: Compute, Storage, Database, Networking, Messaging, Security, Monitoring, CDN, Identity, DevOps
 - **provider**: {{ cloud_provider }}
 - **description**: One sentence describing what this service does.

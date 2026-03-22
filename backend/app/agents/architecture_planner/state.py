@@ -88,6 +88,7 @@ class ArchitecturePlannerState(TypedDict):
 
     # === SERVICE DISCOVERY ===
     relevant_services: list[ServiceEntry]
+    terraform_mcp_available: bool         # True if terraform MCP returned data this run
 
     # === ARCHITECTURE (4 deliverables) ===
     architecture_diagram: Optional[ArchitectureDiagram]
@@ -146,6 +147,7 @@ def make_initial_state(
         "kg_explanation": "",
         "kg_traversal_iteration_count": 0,
         "relevant_services": [],
+        "terraform_mcp_available": False,
         "architecture_diagram": None,
         "nfr_document": "",
         "component_responsibilities": "",
