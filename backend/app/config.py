@@ -37,6 +37,7 @@ class Settings(BaseSettings):
 
     # Encryption
     fernet_key: str = ""
+    fernet_keys: str = ""  # Comma-separated list of Fernet keys, newest first. Overrides fernet_key if set.
 
     # GitHub OAuth
     github_client_id: str = ""
