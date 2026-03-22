@@ -1,0 +1,11 @@
+The following information is needed to proceed with architecture design:
+
+{% for q in clarifying_questions %}
+Q{{ loop.index }}. {{ q.question }}
+   Why: {{ q.context }}
+   Options:
+{% for choice in q.choices %}
+   {{ loop.index }}. {{ choice }}
+{% endfor %}
+   {{ q.choices|length + 1 }}. Custom answer
+{% endfor %}
