@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Plus, Globe2, Clock } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useForgeStore } from '@/store/forgeStore';
+import { useAuthStore } from '@/store/authStore';
 import type { Project } from '@/lib/mock-data';
 import type { ForgeStage } from '@/store/forgeStore';
 import StatusBadge from '@/components/cloudforge/StatusBadge';
@@ -206,19 +207,52 @@ const OLD_STAGE_TO_FORGE: Record<string, ForgeStage> = {
 };
 
 export default function DashboardPage() {
-  const { projects } = useProjectStore();
+  const { projects, loadProjects, createApiProject, isLoading } = useProjectStore();
+  const { accessToken } = useAuthStore();
   const router = useRouter();
 
-  function handleNewProject() {
-    useForgeStore.getState().setProjectName('New Project');
-    useForgeStore.getState().setStageStatus('requirements', 'processing');
-    router.push('/app/requirements');
+  useEffect(() => {
+    if (accessToken) {
+      loadProjects(accessToken);
+    }
+  }, [accessToken, loadProjects]);
+
+  async function handleNewProject() {
+    if (!accessToken) return;
+    try {
+      const name = `project-${Date.now()}`;
+      const project = await createApiProject(name, accessToken);
+      useForgeStore.getState().setProjectName(project.name);
+      useForgeStore.getState().setCurrentProjectId(project.id);
+      useForgeStore.getState().setStageStatus('requirements', 'locked');
+      useForgeStore.getState().setPrdText('');
+      router.push('/app/requirements');
+    } catch {
+      // project creation failed — stay on dashboard
+    }
   }
 
   function handleOpenProject(project: Project) {
     useForgeStore.getState().setProjectName(project.name);
+    useForgeStore.getState().setCurrentProjectId(project.id);
+    useForgeStore.getState().hydrateProject(project.id);
     const forgeStage: ForgeStage = OLD_STAGE_TO_FORGE[project.stage] ?? 'requirements';
     router.push(`/app/${forgeStage}`);
+  }
+
+  if (isLoading && projects.length === 0) {
+    return (
+      <p
+        style={{
+          fontFamily: 'var(--font-inter), system-ui, sans-serif',
+          fontSize: '14px',
+          color: 'var(--lp-text-secondary)',
+          padding: '32px 40px',
+        }}
+      >
+        Loading...
+      </p>
+    );
   }
 
   return (

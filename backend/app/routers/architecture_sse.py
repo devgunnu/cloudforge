@@ -53,8 +53,6 @@ def _get_arch_graph(kuzu_conn=None):  # noqa: ARG001 — kuzu_conn reserved for 
     global _arch_graph_v2
     if _arch_graph_v2 is None:
         _arch_graph_v2 = create_graph(
-            model_type=settings.arch_model_type,
-            model_name=settings.arch_model_name,
             graph_json_path=_GRAPH_JSON,
             community_summaries_path=_SUMMARIES_JSON,
         )
@@ -399,6 +397,33 @@ async def review_arch_v2(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.get("/{project_id}")
+async def get_architecture(
+    project_id: str,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    project = await projects_col().find_one({"_id": ObjectId(project_id)})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    if str(project["owner_id"]) != str(user["_id"]):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    arch_doc = await architectures_col().find_one(
+        {"project_id": ObjectId(project_id)},
+        sort=[("created_at", -1)],
+    )
+    if not arch_doc:
+        raise HTTPException(status_code=404, detail="No architecture session for this project")
+
+    return {
+        "session_id": arch_doc["session_id"],
+        "status": arch_doc.get("status"),
+        "architecture_diagram": arch_doc.get("architecture_diagram") or {},
+        "nfr_document": arch_doc.get("nfr_document") or "",
+        "eval_score": arch_doc.get("eval_score"),
+    }
 
 
 @router.post("/accept/{project_id}")

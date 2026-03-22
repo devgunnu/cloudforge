@@ -1,5 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+HAIKU_MODEL = "claude-haiku-4-5-20251001"
+
 
 class Settings(BaseSettings):
     app_name: str = "CloudForge API"
@@ -7,23 +9,15 @@ class Settings(BaseSettings):
     debug: bool = True
     host: str = "0.0.0.0"
     port: int = 8000
-    ollama_base_url: str = "http://localhost:11434"
-    qwen_model: str = "qwen3.5:latest"
+
+    # LLM — all agents use Claude Haiku via Anthropic
+    anthropic_api_key: str = ""
+    llm_model: str = HAIKU_MODEL
     llm_temperature: float = 0.2
     llm_timeout_seconds: int = 90
     enable_web_search: bool = True
     max_clarification_rounds: int = 6
     max_research_rounds: int = 3
-
-    # Agent 2 — Architecture Planner LLM
-    # Set arch_model_type="anthropic" and ANTHROPIC_API_KEY in .env for Claude.
-    # Defaults to local Ollama so the server starts without any extra API keys.
-    arch_model_type: str = "ollama"
-    arch_model_name: str = "llama3.1:8b"
-
-    # Agent 3 — Terraform / Code Generator LLM (always Ollama)
-    agent3_model: str = "qwen3.5"        # primary model for heavy tasks
-    agent3_fast_model: str = "qwen3.5"   # lighter tasks (code fixing, test gen)
 
     # MongoDB
     mongodb_url: str = "mongodb://localhost:27017"
@@ -44,15 +38,13 @@ class Settings(BaseSettings):
     github_client_secret: str = ""
     github_redirect_uri: str = "http://localhost:8000/auth/github/callback"
 
-    # External services
-    anthropic_api_key: str = ""
     frontend_url: str = "http://localhost:3000"
 
     # Agent data paths
     graph_json_path: str = "app/agents/data/graph/graph.json"
     kuzu_db_path: str = "./cloudforge_db"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 
 settings = Settings()

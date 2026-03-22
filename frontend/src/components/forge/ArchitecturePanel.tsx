@@ -8,8 +8,6 @@ import ArchDiagram, { convertForgeNodes, convertForgeEdges } from '@/components/
 import {
   runAgent2,
   AGENT2_STEPS,
-  MOCK_ARCH_NODES,
-  MOCK_ARCH_EDGES,
 } from '@/lib/forge-agents';
 import type { ForgeArchNode } from '@/store/forgeStore';
 
@@ -331,6 +329,7 @@ export default function ArchitecturePanel() {
     setStageStatus,
     addChatMessage,
     advanceStage,
+    currentProjectId,
   } = useForgeStore();
 
   const [activeStep, setActiveStep] = useState(0);
@@ -358,7 +357,7 @@ export default function ArchitecturePanel() {
 
     runAgent2(constraints, (step) => {
       setActiveStep(step);
-    }).then((data) => {
+    }, currentProjectId ?? undefined).then((data) => {
       setArchitectureData(data);
       setStageStatus('architecture', 'done');
       setProcessing(false);
@@ -383,7 +382,7 @@ export default function ArchitecturePanel() {
 
   const selectedNode =
     selectedNodeId != null
-      ? (architectureData?.nodes ?? MOCK_ARCH_NODES).find(
+      ? (architectureData?.nodes ?? []).find(
           (n) => n.id === selectedNodeId,
         ) ?? null
       : null;
@@ -401,8 +400,8 @@ export default function ArchitecturePanel() {
     router.push('/app/build');
   }
 
-  const displayNodes = architectureData?.nodes ?? MOCK_ARCH_NODES;
-  const displayEdges = architectureData?.edges ?? MOCK_ARCH_EDGES;
+  const displayNodes = architectureData?.nodes ?? [];
+  const displayEdges = architectureData?.edges ?? [];
 
   return (
     <div

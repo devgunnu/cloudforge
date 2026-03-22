@@ -13,7 +13,7 @@ from app.agents.architecture_planner.llm_utils import API_ERROR_TYPES
 
 
 # ---------------------------------------------------------------------------
-# Module-level Ollama fallback helper
+# Module-level LLM fallback helper
 # ---------------------------------------------------------------------------
 
 

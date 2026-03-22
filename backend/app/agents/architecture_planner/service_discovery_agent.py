@@ -59,7 +59,7 @@ def make_service_discovery_node(llm, terraform_adapter=None):
         messages = [HumanMessage(content=prompt)]
 
         # ------------------------------------------------------------------
-        # Step 3: LLM invocation with structured output + Ollama fallback
+        # Step 3: LLM invocation with structured output + JSON parse fallback
         # ------------------------------------------------------------------
         try:
             result = llm.with_structured_output(ServiceDiscoveryOutput).invoke(messages)
@@ -71,7 +71,7 @@ def make_service_discovery_node(llm, terraform_adapter=None):
                 "error_message": f"LLM API error ({type(exc).__name__}): {exc}",
             }
         except Exception:
-            # Ollama / plain-text LLM fallback: attempt raw JSON parse
+            # Structured output fallback: attempt raw JSON parse
             try:
                 raw = llm.invoke(messages).content
                 raw = raw.strip()

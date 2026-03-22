@@ -21,8 +21,7 @@ Flags:
     --prd TEXT              PRD inline text
     --prd-file PATH         Path to PRD file (alternative to --prd)
     --cloud AWS|GCP|Azure   Cloud provider
-    --model anthropic|ollama  Model backend (default: anthropic)
-    --model-name NAME       Override default model name
+    --model-name NAME       Override default model name (default: claude-haiku-4-5-20251001)
 """
 from __future__ import annotations
 
@@ -52,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--prd", type=str, help="PRD text (inline)")
     parser.add_argument("--prd-file", type=str, help="Path to PRD file")
     parser.add_argument("--cloud", type=str, choices=["AWS", "GCP", "Azure"], help="Cloud provider")
-    parser.add_argument("--model", type=str, default="anthropic", choices=["anthropic", "ollama"])
+    parser.add_argument("--model-name", type=str, default=None, help="Override default model name")
     parser.add_argument("--model-name", type=str, default=None, help="Override default model name")
     parser.add_argument(
         "--terraform-mcp-cmd",
@@ -285,7 +284,7 @@ def main() -> None:
     if args.model == "anthropic" and not os.environ.get("ANTHROPIC_API_KEY"):
         print(
             "Error: ANTHROPIC_API_KEY environment variable is not set.\n"
-            "Set it before running, or use --model ollama for local inference.",
+            "Set ANTHROPIC_API_KEY before running.",
             file=sys.stderr,
         )
         sys.exit(1)

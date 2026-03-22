@@ -12,9 +12,9 @@ import {
 } from '@xyflow/react';
 import type { CloudForgeTopology } from '@/types/topology';
 import { exportTopology } from '@/lib/exportTopology';
-import { runMockDeploy, type DeployStatus } from '@/lib/mockDeploy';
+import { runDeploy } from '@/lib/forge-agents';
 
-export type { DeployStatus };
+export type DeployStatus = 'idle' | 'generating' | 'deploying' | 'live' | 'error';
 
 export interface NodeData {
   serviceId: string;
@@ -46,7 +46,7 @@ interface CanvasStore {
   deployLog: string[];
   deployError: string | null;
   deployRunId: number;
-  startDeploy: () => Promise<void>;
+  startDeploy: (projectId: string) => Promise<void>;
   resetDeploy: () => void;
 
   // Topology export
@@ -132,44 +132,31 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   deployError: null,
   deployRunId: 0,
 
-  startDeploy: async () => {
-    const { getTopology, deployStatus } = get();
+  startDeploy: async (projectId: string) => {
+    const { deployStatus } = get();
     if (deployStatus !== 'idle' && deployStatus !== 'error') return;
-
-    const topology = getTopology();
 
     const runId = get().deployRunId + 1;
     set({ deployStatus: 'generating', deployLog: [], deployError: null, deployRunId: runId });
 
     try {
-      for await (const event of runMockDeploy()) {
-        set((state) => ({
-          deployStatus: event.status,
-          deployLog: event.logLine
-            ? [...state.deployLog, event.logLine]
-            : state.deployLog,
-        }));
-
-        // ============================================================
-        // BACKEND HOOK: POST /api/deploy
-        // Payload: CloudForgeTopology (see src/types/topology.ts)
-        // Expected response: { deploymentId: string, status: string }
-        // The backend agent (Claude + AWS Cloud Control API) receives
-        // this topology and generates + executes Terraform.
-        // ============================================================
-        if (
-          event.status === 'deploying' &&
-          event.logLine?.includes('provisioning agent')
-        ) {
-          await fetch('/api/deploy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(topology),
-          }).catch(() => {
-            // Mock: swallow fetch errors during demo
-          });
-        }
-      }
+      await runDeploy(
+        [],
+        { nodes: [], edges: [] },
+        {
+          onLog: (line: string) => {
+            set((state) => ({ deployLog: [...state.deployLog, line] }));
+          },
+          onNodeStatus: (_nodeId: string, status: string) => {
+            if (status === 'provisioning') {
+              set({ deployStatus: 'deploying' });
+            } else if (status === 'live') {
+              set({ deployStatus: 'live' });
+            }
+          },
+        },
+        projectId,
+      );
     } catch (err) {
       const message =
         err instanceof Error ? err.message : 'Unknown deploy error';
@@ -177,10 +164,13 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       return;
     }
 
+    set({ deployStatus: 'live' });
+
     // Auto-reset to idle after 4s on success — guard against stale timers from prior deploys
+    const capturedRunId = runId;
     setTimeout(() => {
       set((state) => {
-        if (state.deployStatus === 'live' && state.deployRunId === runId) {
+        if (state.deployStatus === 'live' && state.deployRunId === capturedRunId) {
           return { deployStatus: 'idle' };
         }
         return {};

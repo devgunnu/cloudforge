@@ -42,6 +42,21 @@ def _infer_category(label: str) -> str:
     return "reliability"
 
 
+def _build_questions_with_options(state: AgentState) -> list[dict]:
+    """Return questions_with_options, generating a Custom-only fallback when the LLM omits them."""
+    if state.questions_with_options:
+        return [q.model_dump() for q in state.questions_with_options]
+    # LLM didn't populate questions_with_options — synthesise from follow_up_questions
+    return [
+        {
+            "question": q,
+            "original_question": q,
+            "options": [{"label": "Custom…", "value": "", "is_custom": True}],
+        }
+        for q in (state.follow_up_questions or [])
+    ]
+
+
 def _parse_constraints(state: AgentState) -> list[ConstraintChip]:
     if state.plan_json is None:
         return []
@@ -87,6 +102,30 @@ async def _run_agent1(state: AgentState) -> AgentState:
 # Persistence helpers
 # ---------------------------------------------------------------------------
 
+def _build_messages(result: AgentState) -> list[dict]:
+    """Reconstruct the conversation message list from agent state."""
+    messages: list[dict] = []
+
+    if result.prd_text:
+        messages.append({"role": "user", "type": "prd_text", "content": result.prd_text})
+
+    # Interleave clarification questions and user answers by round index.
+    questions = result.follow_up_questions or []
+    answers = result.user_answers or []
+    for i, question in enumerate(questions):
+        messages.append({"role": "agent", "type": "question", "content": question})
+        if i < len(answers):
+            messages.append({"role": "user", "type": "answer", "content": answers[i]})
+    # Any remaining answers not paired with a question
+    for answer in answers[len(questions):]:
+        messages.append({"role": "user", "type": "answer", "content": answer})
+
+    if result.plan_markdown:
+        messages.append({"role": "agent", "type": "plan_ready", "content": result.plan_markdown})
+
+    return messages
+
+
 async def _persist_prd(
     project_id: str,
     session_id: str,
@@ -100,7 +139,7 @@ async def _persist_prd(
         "status": "plan_ready",
         "plan_markdown": result.plan_markdown or "",
         "plan_json": result.plan_json.model_dump(mode="json") if result.plan_json else {},
-        "messages": [],
+        "messages": _build_messages(result),
         "created_at": now,
         "updated_at": now,
     }
@@ -113,6 +152,55 @@ async def _persist_prd(
         {"_id": ObjectId(project_id)},
         {"$set": {"prd_session_id": session_id, "updated_at": now}},
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /workflows/prd/v2/{project_id}  — restore saved PRD state
+# ---------------------------------------------------------------------------
+
+def _parse_constraints_from_dict(plan_json: dict) -> list[ConstraintChip]:
+    chips: list[ConstraintChip] = []
+    for item in plan_json.get("non_functional_requirements", []):
+        label = (
+            item.get("requirement") or item.get("description") or str(item)
+            if isinstance(item, dict) else str(item)
+        ).strip()
+        if label:
+            chips.append(ConstraintChip(id=str(uuid4()), label=label, category=_infer_category(label)))
+    return chips
+
+
+@router.get("/{project_id}")
+async def get_prd(
+    project_id: str,
+    user: dict = Depends(get_current_user),
+) -> dict:
+    try:
+        oid = ObjectId(project_id)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    project = await projects_col().find_one({"_id": oid})
+    if project is None or project.get("owner_id") != ObjectId(str(user["_id"])):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+
+    session_id: str | None = project.get("prd_session_id")
+    if not session_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No PRD session for this project")
+
+    conv = await prd_conversations_col().find_one({"session_id": session_id})
+    if not conv:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="PRD conversation not found")
+
+    constraints = _parse_constraints_from_dict(conv.get("plan_json") or {})
+
+    return {
+        "session_id": session_id,
+        "status": conv.get("status"),
+        "plan_markdown": conv.get("plan_markdown", ""),
+        "messages": conv.get("messages", []),
+        "constraints": [c.model_dump() for c in constraints],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -186,17 +274,32 @@ async def start_prd(
                 return
             session_store.save(result.as_graph_state())
 
-            chips = _parse_constraints(result)
-            await _persist_prd(project_id, session_id, result, chips)
-
-            for chip in chips:
-                yield _sse({"type": "constraint", "chip": chip.model_dump()})
-
-            yield _sse({
-                "type": "plan_ready",
-                "session_id": session_id,
-                "plan_markdown": result.plan_markdown or "",
-            })
+            if result.status == "needs_input":
+                # Persist session_id so /respond can find the session
+                now = datetime.now(timezone.utc)
+                await projects_col().update_one(
+                    {"_id": ObjectId(project_id)},
+                    {"$set": {"prd_session_id": session_id, "updated_at": now}},
+                )
+                questions = result.follow_up_questions or []
+                questions_with_options = _build_questions_with_options(result)
+                yield _sse({
+                    "type": "clarification_needed",
+                    "questions": questions,
+                    "questions_with_options": questions_with_options,
+                })
+            elif result.status == "plan_ready":
+                chips = _parse_constraints(result)
+                await _persist_prd(project_id, session_id, result, chips)
+                for chip in chips:
+                    yield _sse({"type": "constraint", "chip": chip.model_dump()})
+                yield _sse({
+                    "type": "plan_ready",
+                    "session_id": session_id,
+                    "plan_markdown": result.plan_markdown or "",
+                })
+            else:
+                yield _sse({"type": "error", "message": f"Unexpected agent status: {result.status}"})
 
         except Exception as exc:
             logger.exception("Error in start_prd SSE stream")
@@ -250,7 +353,7 @@ async def respond_prd(
         raw = {
             "session_id": session_id,
             "prd_text": conv.get("plan_markdown", ""),
-            "cloud_provider": project.get("cloud_provider", "aws"),
+            "cloud_provider": project.get("cloud_provider") or "aws",
             "status": "needs_input",
             "plan_markdown": conv.get("plan_markdown"),
             "plan_json": conv.get("plan_json"),
@@ -271,17 +374,26 @@ async def respond_prd(
                 return
             session_store.save(result.as_graph_state())
 
-            chips = _parse_constraints(result)
-            await _persist_prd(project_id, session_id, result, chips)
-
-            for chip in chips:
-                yield _sse({"type": "constraint", "chip": chip.model_dump()})
-
-            yield _sse({
-                "type": "plan_ready",
-                "session_id": session_id,
-                "plan_markdown": result.plan_markdown or "",
-            })
+            if result.status == "needs_input":
+                questions = result.follow_up_questions or []
+                questions_with_options = _build_questions_with_options(result)
+                yield _sse({
+                    "type": "clarification_needed",
+                    "questions": questions,
+                    "questions_with_options": questions_with_options,
+                })
+            elif result.status == "plan_ready":
+                chips = _parse_constraints(result)
+                await _persist_prd(project_id, session_id, result, chips)
+                for chip in chips:
+                    yield _sse({"type": "constraint", "chip": chip.model_dump()})
+                yield _sse({
+                    "type": "plan_ready",
+                    "session_id": session_id,
+                    "plan_markdown": result.plan_markdown or "",
+                })
+            else:
+                yield _sse({"type": "error", "message": f"Unexpected agent status: {result.status}"})
 
         except Exception as exc:
             logger.exception("Error in respond_prd SSE stream")

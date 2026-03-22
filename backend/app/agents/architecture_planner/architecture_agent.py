@@ -68,7 +68,7 @@ def make_architecture_node(llm):
                 "error_message": f"LLM API error ({type(exc).__name__}): {exc}",
             }
         except Exception:
-            # Ollama / plain-text LLM fallback: attempt raw JSON parse
+            # Structured output fallback: attempt raw JSON parse
             try:
                 raw = llm.invoke(messages).content
                 raw = raw.strip()
