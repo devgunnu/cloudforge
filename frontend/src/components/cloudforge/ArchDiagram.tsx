@@ -1256,6 +1256,15 @@ export default function ArchDiagram({
 
   useEffect(() => { setMounted(true); }, []);
 
+  // Clear pending tooltip timer on unmount to prevent state updates on unmounted component
+  useEffect(() => {
+    return () => {
+      if (tooltipTimerRef.current) {
+        clearTimeout(tooltipTimerRef.current);
+      }
+    };
+  }, []);
+
   const ICON_SIZE = 56;
   const PAD = 60;
 
