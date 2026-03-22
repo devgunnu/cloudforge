@@ -6,6 +6,9 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Command, interrupt
 
 from app.agents.architecture_planner.state import (
+    ArchitectureDiagram,
+    ArchNode,
+    ArchConnection,
     ArchitecturePlannerState,
     ClarifyingQuestion,
     ServiceEntry,
@@ -127,24 +130,15 @@ def build_arch_review_subgraph(llm):
 
 
 def _build_llm(model_type: str, model_name: str | None):
-    """Instantiate the chat model based on model_type."""
-    if model_type == "anthropic":
-        from langchain_anthropic import ChatAnthropic
-        return ChatAnthropic(
-            model=model_name or "claude-opus-4-6",
-            temperature=0,
-            max_tokens=8096,
-        )
-    elif model_type == "ollama":
-        from langchain_ollama import ChatOllama
-        return ChatOllama(
-            model=model_name or "llama3.1:8b",
-            temperature=0,
-        )
-    else:
-        raise ValueError(
-            f"Unknown model_type '{model_type}'. Use 'anthropic' or 'ollama'."
-        )
+    """Instantiate the chat model. All agents use Anthropic Claude."""
+    from langchain_anthropic import ChatAnthropic
+    from app.config import settings
+    return ChatAnthropic(
+        model=model_name or settings.llm_model,
+        api_key=settings.anthropic_api_key,
+        temperature=0,
+        max_tokens=48000,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -165,15 +159,14 @@ def create_graph(
     graph_json_path: str | None = None,
     community_summaries_path: str | None = None,
     terraform_mcp_cmd: list[str] | None = None,
+    kuzu_conn=None,
 ):
     """
     Build and compile the full architecture planner graph.
 
     Args:
-        model_type: "anthropic" (default) or "ollama"
-        model_name: Override the default model name.
-                    Anthropic default: "claude-opus-4-6"
-                    Ollama default: "llama3.1:8b"
+        model_type: Ignored — kept for call-site compatibility. All agents use Anthropic.
+        model_name: Override the model name. Defaults to settings.llm_model (Haiku).
         graph_json_path: Path to graph.json for KG traversal.
                          Defaults to CLOUDFORGE_GRAPH_JSON env var or "graph.json".
                          KG traversal is silently skipped if the file does not exist.
@@ -204,7 +197,8 @@ def create_graph(
     _summaries = community_summaries_path or os.environ.get(
         "CLOUDFORGE_COMMUNITY_SUMMARIES", "community_summaries.json"
     )
-    conn = init_kuzu(_graph_json)
+    # Use the already-open connection if provided (avoids double-lock on the DB file)
+    conn = kuzu_conn if kuzu_conn is not None else init_kuzu(_graph_json)
     kg_traversal = build_kg_subgraph(llm, conn, _summaries)
 
     # Build subgraphs
@@ -238,7 +232,10 @@ def create_graph(
     # Register custom Pydantic types to silence "Deserializing unregistered type" warnings.
     checkpointer = MemorySaver(
         serde=JsonPlusSerializer(
-            allowed_msgpack_modules=[ClarifyingQuestion, ServiceEntry, ComplianceGap]
+            allowed_msgpack_modules=[
+                ClarifyingQuestion, ServiceEntry, ComplianceGap,
+                ArchitectureDiagram, ArchNode, ArchConnection,
+            ]
         )
     )
     return builder.compile(checkpointer=checkpointer)

@@ -1,257 +1,137 @@
 'use client';
 
-import { useState, type FormEvent } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, useInView } from 'framer-motion';
 import Link from 'next/link';
-
-// ============================================================
-// BACKEND HOOK: Waitlist signup
-// POST email to /api/waitlist or Loops/Resend
-// ============================================================
+import { useRef } from 'react';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
 export default function CTA() {
-  const [email, setEmail] = useState('');
-  const [submitted, setSubmitted] = useState(false);
-
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!email) return;
-    setSubmitted(true);
-  };
+  const ref = useRef<HTMLElement>(null);
+  const inView = useInView(ref, { once: true, margin: '-100px' });
 
   return (
     <section
+      ref={ref}
       style={{
-        padding: '120px 24px 160px',
+        background: 'var(--lp-bg)',
+        padding: '120px 24px',
         position: 'relative',
         overflow: 'hidden',
-        background: 'var(--lp-bg)',
+        textAlign: 'center',
       }}
     >
-      {/* Top border */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: '100%',
-          maxWidth: '1100px',
-          height: '1px',
-          background: 'var(--lp-border)',
-        }}
-      />
-
-      {/* Subtle accent glow */}
+      {/* Teal radial glow behind headline */}
       <div
         aria-hidden="true"
         style={{
           position: 'absolute',
           top: '50%',
           left: '50%',
-          transform: 'translate(-50%, -50%)',
+          transform: 'translate(-50%, -60%)',
           width: '600px',
-          height: '300px',
+          height: '400px',
           background:
-            'radial-gradient(ellipse at center, rgba(110,171,133,0.05) 0%, transparent 70%)',
+            'radial-gradient(ellipse at center, rgba(45,212,191,0.08) 0%, transparent 70%)',
           pointerEvents: 'none',
+          filter: 'blur(40px)',
         }}
       />
 
-      <motion.div
-        initial={{ opacity: 0, y: 40 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, margin: '-80px' }}
-        transition={{ duration: 0.7, ease: EASE }}
-        style={{
-          maxWidth: '560px',
-          margin: '0 auto',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          textAlign: 'center',
-          position: 'relative',
-        }}
-      >
-        <h2
+      <div style={{ position: 'relative', maxWidth: '700px', margin: '0 auto' }}>
+        <motion.h2
+          initial={{ opacity: 0, y: 24 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.6, ease: EASE }}
           style={{
             fontFamily: 'var(--font-inter), system-ui, sans-serif',
-            fontSize: 'clamp(32px, 5vw, 56px)',
+            fontSize: 'clamp(40px, 6vw, 64px)',
             fontWeight: 600,
             color: 'var(--lp-text-primary)',
             letterSpacing: '-0.03em',
-            lineHeight: 1.1,
-            marginBottom: '16px',
+            lineHeight: 1.05,
+            margin: '0 0 20px',
           }}
         >
-          Start in 60 seconds.
-        </h2>
+          From PRD to deployed.
+          <br />
+          No detours.
+        </motion.h2>
 
-        <p
+        <motion.p
+          initial={{ opacity: 0, y: 20 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.6, ease: EASE, delay: 0.1 }}
           style={{
             fontFamily: 'var(--font-inter), system-ui, sans-serif',
             fontSize: '17px',
             color: 'var(--lp-text-secondary)',
+            margin: '0 0 40px',
             lineHeight: 1.6,
-            marginBottom: '40px',
-            fontWeight: 400,
           }}
         >
-          Join the waitlist for early access, or sign in to start
-          building right away.
-        </p>
+          Create an account and start your first project in minutes.
+        </motion.p>
 
-        <AnimatePresence mode="wait">
-          {submitted ? (
-            <motion.div
-              key="success"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.4, ease: EASE }}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '20px',
-              }}
-            >
-              {/* Confirmation badge */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '12px 20px',
-                  background: 'var(--lp-accent-dim)',
-                  border: '1px solid rgba(110,171,133,0.2)',
-                  borderRadius: '10px',
-                }}
-              >
-                <div
-                  style={{
-                    width: '7px',
-                    height: '7px',
-                    borderRadius: '50%',
-                    background: 'var(--lp-accent)',
-                    flexShrink: 0,
-                  }}
-                />
-                <span
-                  style={{
-                    fontFamily: 'var(--font-inter), system-ui, sans-serif',
-                    fontSize: '14px',
-                    color: 'var(--lp-accent)',
-                    fontWeight: 500,
-                  }}
-                >
-                  You&apos;re on the list — we&apos;ll be in touch.
-                </span>
-              </div>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.6, ease: EASE, delay: 0.2 }}
+          style={{
+            display: 'flex',
+            gap: '12px',
+            justifyContent: 'center',
+            flexWrap: 'wrap',
+            marginBottom: '24px',
+          }}
+        >
+          <Link
+            href="/signup"
+            className="lp-btn-primary"
+            style={{
+              fontFamily: 'var(--font-inter), system-ui, sans-serif',
+              fontSize: '15px',
+              fontWeight: 500,
+              padding: '12px 24px',
+              borderRadius: '10px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            Start building free <span style={{ fontSize: '17px', lineHeight: 1 }}>→</span>
+          </Link>
+          <a
+            href="https://github.com/cloudforge-dev/cloudforge"
+            className="lp-btn-ghost"
+            style={{
+              fontFamily: 'var(--font-inter), system-ui, sans-serif',
+              fontSize: '15px',
+              fontWeight: 400,
+              padding: '12px 24px',
+              borderRadius: '10px',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            View on GitHub
+          </a>
+        </motion.div>
 
-              <Link
-                href="/signup"
-                className="lp-btn-primary"
-                style={{
-                  fontFamily: 'var(--font-inter), system-ui, sans-serif',
-                  fontSize: '15px',
-                  fontWeight: 500,
-                  padding: '12px 24px',
-                  borderRadius: '10px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                }}
-              >
-                Create your account →
-              </Link>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="form"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3, ease: EASE }}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                gap: '16px',
-                width: '100%',
-              }}
-            >
-              <form
-                onSubmit={handleSubmit}
-                style={{
-                  display: 'flex',
-                  gap: '8px',
-                  width: '100%',
-                  maxWidth: '420px',
-                  flexWrap: 'wrap',
-                  justifyContent: 'center',
-                }}
-              >
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  required
-                  aria-label="Email address for waitlist"
-                  className="lp-input"
-                  style={{
-                    flex: 1,
-                    minWidth: '220px',
-                    padding: '12px 16px',
-                    borderRadius: '10px',
-                    fontFamily: 'var(--font-inter), system-ui, sans-serif',
-                    fontSize: '15px',
-                  }}
-                />
-                <button
-                  type="submit"
-                  className="lp-btn-primary"
-                  style={{
-                    fontFamily: 'var(--font-inter), system-ui, sans-serif',
-                    fontSize: '15px',
-                    fontWeight: 500,
-                    padding: '12px 20px',
-                    borderRadius: '10px',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  Join waitlist
-                </button>
-              </form>
-
-              <p
-                style={{
-                  fontFamily: 'var(--font-inter), system-ui, sans-serif',
-                  fontSize: '13px',
-                  color: 'var(--lp-text-hint)',
-                }}
-              >
-                or{' '}
-                <Link
-                  href="/login"
-                  className="lp-nav-link"
-                  style={{
-                    color: 'var(--lp-accent)',
-                    opacity: 0.8,
-                    fontFamily: 'var(--font-inter), system-ui, sans-serif',
-                    fontSize: '13px',
-                  }}
-                >
-                  sign in to existing account →
-                </Link>
-              </p>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={inView ? { opacity: 1 } : {}}
+          transition={{ duration: 0.6, ease: EASE, delay: 0.3 }}
+          style={{
+            fontFamily: 'var(--font-inter), system-ui, sans-serif',
+            fontSize: '13px',
+            color: 'var(--lp-text-hint)',
+          }}
+        >
+          Writes your codebase · Deploys your infrastructure · You own everything
+        </motion.p>
+      </div>
     </section>
   );
 }

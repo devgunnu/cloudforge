@@ -6,6 +6,8 @@ from app.agents.agent1 import run_until_interrupt
 from app.agents.agent1.state import AgentState
 from app.schemas.workflow import (
     AcceptWorkflowRequest,
+    QuestionOptionSchema,
+    QuestionWithOptionsSchema,
     RespondWorkflowRequest,
     StartWorkflowRequest,
     WorkflowResponse,
@@ -19,9 +21,7 @@ def _to_response(state: AgentState) -> WorkflowResponse:
     status = state.status
     if status not in {"needs_input", "plan_ready", "accepted"}:
         status = "needs_input"
-    
-    # Convert questions_with_options to schema
-    from app.schemas.workflow import QuestionWithOptionsSchema, QuestionOptionSchema
+
     questions_with_options = [
         QuestionWithOptionsSchema(
             question=q.question,

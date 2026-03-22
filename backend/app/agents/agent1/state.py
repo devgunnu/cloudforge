@@ -54,6 +54,8 @@ class ClarifierOutput(BaseModel):
 class FinalPRDJson(BaseModel):
     """Final PRD-like structure consumed by downstream service selection logic."""
 
+    model_config = ConfigDict(extra="ignore")
+
     scope: str = ""
     product_summary: str = ""
     functional_requirements: list[str] = Field(default_factory=list)
@@ -69,6 +71,8 @@ class FinalPRDJson(BaseModel):
 
 class PlannerOutput(BaseModel):
     """Top-level planner output with markdown plus machine-readable PRD JSON."""
+
+    model_config = ConfigDict(extra="ignore")
 
     plan_markdown: str
     plan_json: FinalPRDJson

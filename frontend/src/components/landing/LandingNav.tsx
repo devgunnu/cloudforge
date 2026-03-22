@@ -1,6 +1,23 @@
+'use client';
+
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
+const NAV_LINKS = [
+  { label: 'How it works', href: '#how-it-works' },
+  { label: 'Features', href: '#features' },
+  { label: 'Docs', href: '#' },
+] as const;
+
 export default function LandingNav() {
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 10);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   return (
     <nav
       style={{
@@ -14,10 +31,11 @@ export default function LandingNav() {
         justifyContent: 'space-between',
         padding: '0 32px',
         zIndex: 100,
-        background: 'rgba(13,15,19,0.85)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        borderBottom: '1px solid var(--lp-border)',
+        background: scrolled ? 'rgba(13,15,19,0.9)' : 'transparent',
+        backdropFilter: scrolled ? 'blur(12px)' : 'none',
+        WebkitBackdropFilter: scrolled ? 'blur(12px)' : 'none',
+        borderBottom: `1px solid ${scrolled ? 'var(--lp-border)' : 'transparent'}`,
+        transition: 'background 200ms ease, border-color 200ms ease, backdrop-filter 200ms ease',
       }}
     >
       {/* Logo */}
@@ -44,7 +62,7 @@ export default function LandingNav() {
         </span>
       </div>
 
-      {/* Nav links — centered absolutely so they stay centered regardless of CTA width */}
+      {/* Center links — absolutely centered so they stay centered regardless of CTA width */}
       <div
         style={{
           display: 'flex',
@@ -55,13 +73,7 @@ export default function LandingNav() {
           transform: 'translateX(-50%)',
         }}
       >
-        {(
-          [
-            { label: 'How it works', href: '#how-it-works' },
-            { label: 'Features', href: '#features' },
-            { label: 'Docs', href: '#' },
-          ] as const
-        ).map(({ label, href }) => (
+        {NAV_LINKS.map(({ label, href }) => (
           <a
             key={label}
             href={href}
@@ -77,7 +89,7 @@ export default function LandingNav() {
         ))}
       </div>
 
-      {/* CTA group */}
+      {/* Right CTAs */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <Link
           href="/login"
@@ -108,8 +120,7 @@ export default function LandingNav() {
             gap: '6px',
           }}
         >
-          Get started
-          <span style={{ opacity: 0.6 }}>↗</span>
+          Start building <span>→</span>
         </Link>
       </div>
     </nav>

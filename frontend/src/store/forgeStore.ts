@@ -1,4 +1,7 @@
 import { create } from 'zustand';
+import { authHeaders } from '@/lib/forge-agents';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -17,12 +20,28 @@ export interface ActivityCard {
   files: Array<{ id: string; name: string; status: 'new' | 'modified' | 'pending' }>;
 }
 
+export interface ClarificationOption {
+  label: string;
+  value: string;
+  is_custom: boolean;
+}
+
+export interface ClarificationQuestion {
+  question: string;
+  original_question: string;
+  options: ClarificationOption[];
+}
+
 export interface ForgeChatMessage {
   id: string;
   role: 'agent' | 'user';
   content: string;
   chips?: ConstraintChip[];
   activityCard?: ActivityCard;
+  clarificationCard?: {
+    id: string;
+    questions: ClarificationQuestion[];
+  };
 }
 
 export interface ForgeArchNode {
@@ -73,6 +92,7 @@ interface ForgeState {
   buildTotal: number;
   deployLog: string[];
   deployModalOpen: boolean;
+  currentProjectId: string | null;
 
   // Actions
   setStageStatus: (stage: ForgeStage, status: StageStatus) => void;
@@ -91,6 +111,8 @@ interface ForgeState {
   updateNodeDeployStatus: (nodeId: string, status: ForgeArchNode['deployStatus']) => void;
   setProjectName: (name: string) => void;
   setDeployModalOpen: (open: boolean) => void;
+  setCurrentProjectId: (id: string | null) => void;
+  hydrateProject: (projectId: string) => Promise<void>;
 }
 
 // ── Stage order ───────────────────────────────────────────────────────────────
@@ -114,14 +136,13 @@ export const FORGE_STAGE_LABELS: Record<ForgeStage, string> = {
 export const useForgeStore = create<ForgeState>((set, get) => ({
   activeStage: 'requirements',
   stageStatus: {
-    requirements: 'processing',
+    requirements: 'locked',
     architecture: 'locked',
     build: 'locked',
     deploy: 'locked',
   },
-  projectName: 'auth-service-api',
-  prdText:
-    'Build a JWT authentication microservice with rate limiting, refresh tokens, and audit logging. Must support PostgreSQL for user storage and Redis for session caching. Target: 10k concurrent users, P95 latency < 200ms.',
+  projectName: '',
+  prdText: '',
   constraints: [],
   architectureData: null,
   generatedFiles: {},
@@ -153,6 +174,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
   buildTotal: 5,
   deployLog: [],
   deployModalOpen: false,
+  currentProjectId: null,
 
   setStageStatus: (stage, status) =>
     set((state) => ({
@@ -253,4 +275,114 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
   setProjectName: (name) => set({ projectName: name }),
 
   setDeployModalOpen: (open) => set({ deployModalOpen: open }),
+
+  setCurrentProjectId: (id) => set({ currentProjectId: id }),
+
+  hydrateProject: async (projectId: string) => {
+    const headers = authHeaders();
+    if (!headers.Authorization) return;
+
+    // ── Helper: mirrors _mapNodeType from forge-agents.ts ──────────────────
+    function mapNodeType(service: string): ForgeArchNode['type'] {
+      const s = service.toLowerCase();
+      if (s.includes('gateway') || s.includes('apigw')) return 'gateway';
+      if (s.includes('lambda') || s.includes('function') || s.includes('compute') || s.includes('ec2')) return 'compute';
+      if (s.includes('cache') || s.includes('redis') || s.includes('elasticache')) return 'cache';
+      if (s.includes('rds') || s.includes('database') || s.includes('postgres') || s.includes('mysql') || s.includes('s3')) return 'storage';
+      if (s.includes('auth') || s.includes('cognito') || s.includes('secret')) return 'auth';
+      return 'compute';
+    }
+
+    // ── PRD hydration ───────────────────────────────────────────────────────
+    const { prdText } = get();
+    if (!prdText) {
+      try {
+        const prdResp = await fetch(`${API_URL}/workflows/prd/v2/${projectId}`, { headers });
+        if (prdResp.ok) {
+          const prdData = await prdResp.json() as {
+            session_id?: string;
+            status?: string;
+            plan_markdown?: string;
+            messages?: Array<{ role?: string; type?: string; content?: string }>;
+            constraints?: Array<{ id: string; label: string; category: string }>;
+          };
+
+          const restoredMessages: ForgeChatMessage[] = (prdData.messages ?? [])
+            .filter((m) => m.content)
+            .map((m, i) => ({
+              id: `hydrated-req-${i}`,
+              role: (m.role === 'user' ? 'user' : 'agent') as ForgeChatMessage['role'],
+              content: m.content!,
+            }));
+
+          const restoredConstraints: ConstraintChip[] = (prdData.constraints ?? []).map((c) => ({
+            id: c.id,
+            label: c.label,
+            category: c.category as ConstraintChip['category'],
+          }));
+
+          set((state) => ({
+            prdText: prdData.plan_markdown ?? '',
+            constraints: restoredConstraints,
+            stageStatus: { ...state.stageStatus, requirements: 'done' },
+            chatHistory: {
+              ...state.chatHistory,
+              requirements: restoredMessages.length > 0 ? restoredMessages : state.chatHistory.requirements,
+            },
+          }));
+        }
+        // 404 → silently skip
+      } catch { /* network error — skip */ }
+    }
+
+    // ── Architecture hydration ──────────────────────────────────────────────
+    const { architectureData } = get();
+    if (!architectureData) {
+      try {
+        const archResp = await fetch(`${API_URL}/workflows/architecture/v2/${projectId}`, { headers });
+        if (archResp.ok) {
+          const archData = await archResp.json() as {
+            session_id?: string;
+            status?: string;
+            architecture_diagram?: {
+              nodes?: Array<Record<string, unknown>>;
+              connections?: Array<Record<string, unknown>>;
+            };
+            nfr_document?: string;
+            eval_score?: number;
+          };
+
+          const diagram = archData.architecture_diagram;
+          if (diagram?.nodes && diagram.nodes.length > 0) {
+            const nodes: ForgeArchNode[] = diagram.nodes.map((n) => ({
+              id: String(n.id ?? ''),
+              label: String(n.service ?? n.label ?? n.id ?? ''),
+              sublabel: String(n.description ?? ''),
+              type: mapNodeType(String(n.service ?? n.type ?? '')),
+              x: Math.random() * 500,
+              y: Math.random() * 400,
+              terraformResource: String(n.terraform_resource ?? ''),
+              estimatedCost: String(n.estimated_cost ?? ''),
+              config: (n.config as Record<string, string>) ?? {},
+              whyChosen: String(n.why_chosen ?? ''),
+              validates: (n.validates as string[]) ?? [],
+              blocks: (n.blocks as string[]) ?? [],
+              deployStatus: 'queued' as const,
+            }));
+
+            const edges: ForgeArchEdge[] = (diagram.connections ?? []).map((c) => ({
+              from: String(c.from ?? c.from_ ?? c.source ?? ''),
+              to: String(c.to ?? c.target ?? ''),
+            }));
+
+            set((state) => ({
+              architectureData: { nodes, edges },
+              stageStatus: { ...state.stageStatus, architecture: 'done' },
+            }));
+          }
+        }
+        // 404 → silently skip
+      } catch { /* network error — skip */ }
+    }
+  },
 }));

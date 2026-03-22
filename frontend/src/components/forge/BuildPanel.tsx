@@ -4,7 +4,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileCode2 } from 'lucide-react';
 import { useForgeStore } from '@/store/forgeStore';
-import { runAgent3, MOCK_ARCH_NODES, MOCK_ARCH_EDGES } from '@/lib/forge-agents';
+import { runAgent3 } from '@/lib/forge-agents';
 import ArchDiagram, { convertForgeNodes, convertForgeEdges } from '@/components/cloudforge/ArchDiagram';
 import type { GeneratedFile, ForgeArchNode } from '@/store/forgeStore';
 
@@ -490,6 +490,7 @@ export default function BuildPanel() {
     setStageStatus,
     openFile,
     closeFile,
+    currentProjectId,
   } = useForgeStore();
 
   const [activeView, setActiveView] = useState<BuildView>('files');
@@ -499,8 +500,8 @@ export default function BuildPanel() {
 
   const buildStatus = stageStatus.build;
 
-  const archNodes = architectureData?.nodes ?? MOCK_ARCH_NODES;
-  const archEdges = architectureData?.edges ?? MOCK_ARCH_EDGES;
+  const archNodes = architectureData?.nodes ?? [];
+  const archEdges = architectureData?.edges ?? [];
 
   const handleCopy = useCallback(() => {
     if (!activeFile) return;
@@ -551,7 +552,7 @@ export default function BuildPanel() {
       },
     });
 
-    const archData = architectureData ?? { nodes: MOCK_ARCH_NODES, edges: MOCK_ARCH_EDGES };
+    const archData = architectureData ?? { nodes: [], edges: [] };
 
     runAgent3(archData, {
       onFileReady: (file: GeneratedFile) => {
@@ -574,7 +575,7 @@ export default function BuildPanel() {
       onProgress: (filesComplete: number, total: number) => {
         setBuildProgress(filesComplete, total);
       },
-    }).then(() => {
+    }, currentProjectId ?? undefined).then(() => {
       setStageStatus('build', 'done');
       setBuildProgress(buildTotal, buildTotal);
       addChatMessage('build', {

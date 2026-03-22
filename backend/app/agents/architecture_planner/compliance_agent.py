@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import logging
@@ -26,7 +27,7 @@ class ComplianceOutput(BaseModel):
 def make_compliance_node(llm):
     """Factory that returns a compliance_node bound to the provided LLM."""
 
-    async def compliance_node(state: ArchitecturePlannerState) -> dict:
+    def compliance_node(state: ArchitecturePlannerState) -> dict:
         if state["architecture_diagram"] is None:
             return {
                 "compliance_gaps": [],
@@ -40,11 +41,11 @@ def make_compliance_node(llm):
         if state["architecture_diagram"] is not None:
             services = [node.service for node in state["architecture_diagram"].nodes]
             try:
-                cost_data = await fetch_cost_data(
+                cost_data = asyncio.run(fetch_cost_data(
                     cloud_provider=state["cloud_provider"],
                     services=services,
                     region=os.environ.get("AWS_REGION", "us-east-1"),
-                )
+                ))
             except Exception:
                 cost_data = None  # never block the compliance check
 
@@ -73,7 +74,7 @@ def make_compliance_node(llm):
                 "error_message": f"LLM API error ({type(exc).__name__}): {exc}",
             }
         except Exception:
-            # Ollama / plain-text LLM fallback: attempt raw JSON parse
+            # Structured output fallback: attempt raw JSON parse
             try:
                 raw = llm.invoke(messages).content
                 raw = raw.strip()

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Rocket,
@@ -13,7 +13,7 @@ import {
   Filter,
 } from 'lucide-react';
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type EventType = 'deploy' | 'build' | 'prd' | 'error';
 type EventStatus = 'success' | 'failed' | 'in_progress';
@@ -26,126 +26,159 @@ interface HistoryEvent {
   description: string;
   region: string;
   timestamp: string;
-  duration?: string;
 }
 
-const MOCK_HISTORY: HistoryEvent[] = [
-  {
-    id: 'evt-001',
-    type: 'deploy',
-    status: 'success',
-    project: 'auth-service-api',
-    description: 'Deployed to us-east-1 — 4 resources provisioned',
-    region: 'us-east-1',
-    timestamp: '2026-03-21 · 14:32',
-    duration: '2m 14s',
-  },
-  {
-    id: 'evt-002',
-    type: 'build',
-    status: 'success',
-    project: 'auth-service-api',
-    description: 'Terraform plan generated — 4 to add, 0 to change',
-    region: 'us-east-1',
-    timestamp: '2026-03-21 · 14:28',
-    duration: '44s',
-  },
-  {
-    id: 'evt-003',
+// ── API ───────────────────────────────────────────────────────────────────────
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+function authHeaders(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const stored = localStorage.getItem('cloudforge-auth');
+    if (!stored) return {};
+    const token = JSON.parse(stored)?.state?.accessToken;
+    if (!token) return {};
+    return { Authorization: `Bearer ${token}` };
+  } catch {
+    return {};
+  }
+}
+
+interface BuildRecord {
+  id: string;
+  project_id: string;
+  project_name: string;
+  status: string;
+  created_at: string;
+  artifacts_count?: number;
+  generated_files_count?: number;
+}
+
+interface DeploymentRecord {
+  id: string;
+  project_id: string;
+  project_name: string;
+  status: string;
+  provider?: string;
+  region?: string;
+  created_at: string;
+}
+
+interface PrdRecord {
+  id: string;
+  project_id: string;
+  project_name: string;
+  session_id?: string;
+  status: string;
+  created_at: string;
+}
+
+function normalizeStatus(raw: string): EventStatus {
+  const s = raw.toLowerCase();
+  if (s === 'success' || s === 'completed' || s === 'done') return 'success';
+  if (s === 'failed' || s === 'error') return 'failed';
+  return 'in_progress';
+}
+
+function formatTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    return `${date} · ${time}`;
+  } catch {
+    return iso;
+  }
+}
+
+function mapBuildToEvent(b: BuildRecord): HistoryEvent {
+  const status = normalizeStatus(b.status);
+  const fileCount = b.generated_files_count ?? b.artifacts_count;
+  const description = fileCount != null
+    ? `Terraform plan generated — ${fileCount} file${fileCount === 1 ? '' : 's'} produced`
+    : 'Build completed';
+  return {
+    id: `build-${b.id}`,
+    type: status === 'failed' ? 'error' : 'build',
+    status,
+    project: b.project_name || b.project_id,
+    description,
+    region: '',
+    timestamp: formatTimestamp(b.created_at),
+  };
+}
+
+function mapDeploymentToEvent(d: DeploymentRecord): HistoryEvent {
+  const status = normalizeStatus(d.status);
+  const region = d.region || d.provider || 'unknown';
+  const description = status === 'failed'
+    ? `Deploy failed — ${region}`
+    : `Deployed to ${region}`;
+  return {
+    id: `deploy-${d.id}`,
+    type: status === 'failed' ? 'error' : 'deploy',
+    status,
+    project: d.project_name || d.project_id,
+    description,
+    region,
+    timestamp: formatTimestamp(d.created_at),
+  };
+}
+
+function mapPrdToEvent(p: PrdRecord): HistoryEvent {
+  const status = normalizeStatus(p.status);
+  const description = status === 'failed'
+    ? 'PRD processing failed'
+    : 'PRD confirmed — requirements locked';
+  return {
+    id: `prd-${p.id}`,
     type: 'prd',
-    status: 'success',
-    project: 'data-pipeline',
-    description: 'PRD confirmed — 6 functional requirements locked',
-    region: 'eu-west-2',
-    timestamp: '2026-03-21 · 11:05',
-  },
-  {
-    id: 'evt-004',
-    type: 'build',
-    status: 'in_progress',
-    project: 'data-pipeline',
-    description: 'Generating Terraform modules — writing lambda.tf',
-    region: 'eu-west-2',
-    timestamp: '2026-03-21 · 11:09',
-    duration: '1m 32s',
-  },
-  {
-    id: 'evt-005',
-    type: 'error',
-    status: 'failed',
-    project: 'ml-inference-layer',
-    description: 'Deploy failed — IAM role limit reached in us-west-2',
-    region: 'us-west-2',
-    timestamp: '2026-03-20 · 17:44',
-  },
-  {
-    id: 'evt-006',
-    type: 'build',
-    status: 'failed',
-    project: 'ml-inference-layer',
-    description: 'Terraform apply aborted — resource limit exceeded',
-    region: 'us-west-2',
-    timestamp: '2026-03-20 · 17:42',
-    duration: '58s',
-  },
-  {
-    id: 'evt-007',
-    type: 'deploy',
-    status: 'success',
-    project: 'auth-service-api',
-    description: 'Rolled back to v1.2.0 — previous state restored',
-    region: 'us-east-1',
-    timestamp: '2026-03-19 · 09:18',
-    duration: '1m 03s',
-  },
-  {
-    id: 'evt-008',
-    type: 'prd',
-    status: 'success',
-    project: 'auth-service-api',
-    description: 'PRD updated — added rate limiting requirement',
-    region: 'us-east-1',
-    timestamp: '2026-03-18 · 16:55',
-  },
-  {
-    id: 'evt-009',
-    type: 'build',
-    status: 'success',
-    project: 'auth-service-api',
-    description: 'Architecture diagram finalized — 8 nodes, 4 edges',
-    region: 'us-east-1',
-    timestamp: '2026-03-18 · 15:30',
-    duration: '22s',
-  },
-  {
-    id: 'evt-010',
-    type: 'deploy',
-    status: 'success',
-    project: 'data-pipeline',
-    description: 'Initial scaffold deployed — S3 + Glue + Lambda',
-    region: 'eu-west-2',
-    timestamp: '2026-03-17 · 13:10',
-    duration: '3m 07s',
-  },
-  {
-    id: 'evt-011',
-    type: 'error',
-    status: 'failed',
-    project: 'data-pipeline',
-    description: 'Build timeout — Glue job exceeded 5 min limit',
-    region: 'eu-west-2',
-    timestamp: '2026-03-16 · 22:11',
-  },
-  {
-    id: 'evt-012',
-    type: 'prd',
-    status: 'success',
-    project: 'ml-inference-layer',
-    description: 'PRD saved — SageMaker endpoint spec confirmed',
-    region: 'us-west-2',
-    timestamp: '2026-03-15 · 10:02',
-  },
-];
+    status,
+    project: p.project_name || p.project_id,
+    description,
+    region: '',
+    timestamp: formatTimestamp(p.created_at),
+  };
+}
+
+async function fetchHistory(): Promise<HistoryEvent[]> {
+  const headers = { ...authHeaders(), 'Content-Type': 'application/json' };
+
+  const [buildsRes, deploymentsRes, prdsRes] = await Promise.allSettled([
+    fetch(`${API_URL}/history/builds?limit=20`, { headers }),
+    fetch(`${API_URL}/history/deployments?limit=20`, { headers }),
+    fetch(`${API_URL}/history/prd?limit=20`, { headers }),
+  ]);
+
+  const events: HistoryEvent[] = [];
+
+  if (buildsRes.status === 'fulfilled' && buildsRes.value.ok) {
+    const data: BuildRecord[] = await buildsRes.value.json();
+    events.push(...data.map(mapBuildToEvent));
+  }
+
+  if (deploymentsRes.status === 'fulfilled' && deploymentsRes.value.ok) {
+    const data: DeploymentRecord[] = await deploymentsRes.value.json();
+    events.push(...data.map(mapDeploymentToEvent));
+  }
+
+  if (prdsRes.status === 'fulfilled' && prdsRes.value.ok) {
+    const data: PrdRecord[] = await prdsRes.value.json();
+    events.push(...data.map(mapPrdToEvent));
+  }
+
+  // Sort by timestamp descending (newest first)
+  events.sort((a, b) => {
+    try {
+      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+    } catch {
+      return 0;
+    }
+  });
+
+  return events;
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -179,8 +212,8 @@ function statusIcon(status: EventStatus) {
 
 function statusColor(status: EventStatus): string {
   switch (status) {
-    case 'success':     return '#34d399'; // emerald
-    case 'failed':      return '#f87171'; // red
+    case 'success':     return '#34d399';
+    case 'failed':      return '#f87171';
     case 'in_progress': return 'var(--lp-accent)';
   }
 }
@@ -236,6 +269,41 @@ function FilterPill({
   );
 }
 
+function SkeletonRow({ index }: { index: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.2, delay: index * 0.05 }}
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '32px 1fr auto',
+        alignItems: 'start',
+        gap: '12px',
+        padding: '14px 0',
+        borderBottom: '0.5px solid var(--lp-border)',
+      }}
+      aria-hidden="true"
+    >
+      <div
+        style={{
+          width: '32px',
+          height: '32px',
+          borderRadius: '8px',
+          background: 'var(--lp-elevated)',
+          flexShrink: 0,
+        }}
+      />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingTop: '4px' }}>
+        <div style={{ width: '120px', height: '10px', borderRadius: '4px', background: 'var(--lp-elevated)' }} />
+        <div style={{ width: '260px', height: '10px', borderRadius: '4px', background: 'var(--lp-elevated)' }} />
+        <div style={{ width: '80px', height: '9px', borderRadius: '4px', background: 'var(--lp-elevated)' }} />
+      </div>
+      <div style={{ width: '56px', height: '10px', borderRadius: '4px', background: 'var(--lp-elevated)', marginTop: '4px' }} />
+    </motion.div>
+  );
+}
+
 function EventRow({ event, index }: { event: HistoryEvent; index: number }) {
   const color = statusColor(event.status);
 
@@ -284,7 +352,6 @@ function EventRow({ event, index }: { event: HistoryEvent; index: number }) {
             flexWrap: 'wrap',
           }}
         >
-          {/* Type pill */}
           <span
             style={{
               fontFamily: 'var(--font-jetbrains-mono), monospace',
@@ -298,7 +365,6 @@ function EventRow({ event, index }: { event: HistoryEvent; index: number }) {
             {typeLabel(event.type)}
           </span>
           <span aria-hidden="true" style={{ color: 'var(--lp-border-hover)', fontSize: '10px' }}>·</span>
-          {/* Project name */}
           <span
             style={{
               fontFamily: 'var(--font-jetbrains-mono), monospace',
@@ -340,7 +406,7 @@ function EventRow({ event, index }: { event: HistoryEvent; index: number }) {
           >
             {event.timestamp}
           </span>
-          {event.duration && (
+          {event.region && (
             <span
               style={{
                 fontFamily: 'var(--font-jetbrains-mono), monospace',
@@ -348,7 +414,7 @@ function EventRow({ event, index }: { event: HistoryEvent; index: number }) {
                 color: 'var(--lp-text-hint)',
               }}
             >
-              {event.duration}
+              {event.region}
             </span>
           )}
         </div>
@@ -380,12 +446,38 @@ function EventRow({ event, index }: { event: HistoryEvent; index: number }) {
 
 export default function HistoryPage() {
   const [filter, setFilter] = useState<FilterType>('all');
+  const [events, setEvents] = useState<HistoryEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+
+    fetchHistory()
+      .then((data) => {
+        if (!cancelled) {
+          setEvents(data);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load history.');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, []);
 
   const filtered = filter === 'all'
-    ? MOCK_HISTORY
+    ? events
     : filter === 'error'
-      ? MOCK_HISTORY.filter((e) => e.status === 'failed')
-      : MOCK_HISTORY.filter((e) => e.type === filter);
+      ? events.filter((e) => e.status === 'failed')
+      : events.filter((e) => e.type === filter);
 
   return (
     <div
@@ -463,7 +555,25 @@ export default function HistoryPage() {
         aria-label="Activity list"
         role="list"
       >
-        {filtered.length === 0 ? (
+        {loading ? (
+          Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} role="listitem">
+              <SkeletonRow index={i} />
+            </div>
+          ))
+        ) : error ? (
+          <p
+            style={{
+              fontFamily: 'var(--font-inter), system-ui, sans-serif',
+              fontSize: '13px',
+              color: '#f87171',
+              marginTop: '48px',
+            }}
+            role="alert"
+          >
+            {error}
+          </p>
+        ) : filtered.length === 0 ? (
           <p
             style={{
               fontFamily: 'var(--font-inter), system-ui, sans-serif',
@@ -472,7 +582,7 @@ export default function HistoryPage() {
               marginTop: '48px',
             }}
           >
-            No events match this filter.
+            {events.length === 0 ? 'No activity yet.' : 'No events match this filter.'}
           </p>
         ) : (
           filtered.map((event, i) => (

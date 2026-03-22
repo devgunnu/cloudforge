@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion';
 import { Check, Download, Zap, Server, GitBranch, Hammer } from 'lucide-react';
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
+// ── Static data ───────────────────────────────────────────────────────────────
 
 interface Invoice {
   id: string;
@@ -13,7 +13,8 @@ interface Invoice {
   period: string;
 }
 
-const MOCK_INVOICES: Invoice[] = [
+// Static placeholder — billing integration coming soon
+const SAMPLE_INVOICES: Invoice[] = [
   { id: 'inv-2026-03', date: 'Mar 1, 2026', amount: '$49.00', status: 'paid', period: 'Mar 2026' },
   { id: 'inv-2026-02', date: 'Feb 1, 2026', amount: '$49.00', status: 'paid', period: 'Feb 2026' },
   { id: 'inv-2026-01', date: 'Jan 1, 2026', amount: '$49.00', status: 'paid', period: 'Jan 2026' },
@@ -508,7 +509,7 @@ export default function BillingPage() {
           </div>
 
           {/* Rows */}
-          {MOCK_INVOICES.map((inv, i) => (
+          {SAMPLE_INVOICES.map((inv, i) => (
             <div
               key={inv.id}
               style={{
@@ -516,7 +517,7 @@ export default function BillingPage() {
                 gridTemplateColumns: '1fr 1fr 80px 40px',
                 gap: '8px',
                 padding: '12px 16px',
-                borderBottom: i < MOCK_INVOICES.length - 1 ? '0.5px solid var(--lp-border)' : 'none',
+                borderBottom: i < SAMPLE_INVOICES.length - 1 ? '0.5px solid var(--lp-border)' : 'none',
                 alignItems: 'center',
               }}
             >

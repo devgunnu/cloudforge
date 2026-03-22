@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import logging
 
 from langchain_core.messages import HumanMessage
+from typing import Optional
 from pydantic import BaseModel
 
 from app.agents.architecture_planner.state import (
@@ -11,16 +13,18 @@ from app.agents.architecture_planner.state import (
     ArchNode,
 )
 from app.agents.architecture_planner.prompts import render_prompt
-from app.agents.architecture_planner.llm_utils import API_ERROR_TYPES
+from app.agents.architecture_planner.llm_utils import API_ERROR_TYPES, invoke_with_retry
+
+logger = logging.getLogger(__name__)
 
 __all__ = ["make_architecture_node"]
 
 
 class ArchitectureOutput(BaseModel):
     architecture_diagram: ArchitectureDiagram
-    nfr_document: str
-    component_responsibilities: str
-    extra_context: str
+    nfr_document: Optional[str] = ""
+    component_responsibilities: Optional[str] = ""
+    extra_context: Optional[str] = ""
 
 
 def make_architecture_node(llm):
@@ -45,8 +49,11 @@ def make_architecture_node(llm):
         messages = [HumanMessage(content=prompt)]
 
         try:
-            result = llm.with_structured_output(ArchitectureOutput).invoke(messages)
+            result = invoke_with_retry(
+                lambda: llm.with_structured_output(ArchitectureOutput).invoke(messages)
+            )
         except API_ERROR_TYPES as exc:
+            logger.error("architecture_node: LLM API error: %s", exc, exc_info=True)
             dummy_diagram = state.get("architecture_diagram") or ArchitectureDiagram(
                 nodes=[
                     ArchNode(
@@ -67,10 +74,15 @@ def make_architecture_node(llm):
                 "current_node": "architecture",
                 "error_message": f"LLM API error ({type(exc).__name__}): {exc}",
             }
-        except Exception:
-            # Ollama / plain-text LLM fallback: attempt raw JSON parse
+        except Exception as structured_exc:
+            logger.warning(
+                "architecture_node: structured output failed (%s), trying raw JSON fallback",
+                structured_exc,
+                exc_info=True,
+            )
+            # Structured output fallback: attempt raw JSON parse
             try:
-                raw = llm.invoke(messages).content
+                raw = invoke_with_retry(lambda: llm.invoke(messages)).content
                 raw = raw.strip()
                 if raw.startswith("```"):
                     raw = raw.split("```")[1]
@@ -78,6 +90,7 @@ def make_architecture_node(llm):
                         raw = raw[4:]
                 result = ArchitectureOutput.model_validate(json.loads(raw.strip()))
             except API_ERROR_TYPES as exc:
+                logger.error("architecture_node: LLM API error in fallback: %s", exc, exc_info=True)
                 dummy_diagram = state.get("architecture_diagram") or ArchitectureDiagram(
                     nodes=[
                         ArchNode(
@@ -99,6 +112,7 @@ def make_architecture_node(llm):
                     "error_message": f"LLM API error ({type(exc).__name__}): {exc}",
                 }
             except Exception as e2:
+                logger.error("architecture_node: both attempts failed: %s", e2, exc_info=True)
                 # Build a minimal dummy diagram so downstream nodes don't break
                 dummy_diagram = state.get("architecture_diagram") or ArchitectureDiagram(
                     nodes=[

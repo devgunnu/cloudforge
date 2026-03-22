@@ -35,7 +35,18 @@ def _extract_json(text: str) -> dict[str, Any]:
         start = text.find("{")
         end = text.rfind("}")
         if start >= 0 and end > start:
-            return json.loads(text[start : end + 1])
+            try:
+                return json.loads(text[start : end + 1])
+            except json.JSONDecodeError:
+                pass
+        # Last resort: repair truncated/malformed JSON (e.g. from hitting max_tokens)
+        try:
+            from json_repair import repair_json
+            repaired = repair_json(text[start:] if start >= 0 else text, return_objects=True)
+            if isinstance(repaired, dict):
+                return repaired
+        except Exception:
+            pass
         raise
 
 
@@ -249,7 +260,13 @@ def research_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     model_state.clarification_rounds = rounds
 
     llm = get_llm()
-    
+    answers_text = (
+        "\n".join(f"- {a}" for a in model_state.user_answers)
+        if model_state.user_answers
+        else "None provided yet."
+    )
+    has_answers = bool(model_state.user_answers)
+
     # Build Q&A history from answered pairs for clarity.
     qa_history = ""
     if model_state.answered_qa_pairs:
@@ -257,14 +274,23 @@ def research_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
         for q, a in model_state.answered_qa_pairs:
             qa_history += f"Q: {q}\nA: {a}\n\n"
         qa_history += "\n"
-    
+
     # Include all prior answers and structured Q&A history to support deep, iterative clarification.
     prompt = (
         f"{CLARIFIER_PROMPT}\n\n"
         f"Cloud provider: {model_state.cloud_provider}\n"
         f"Initial Product Description:\n{model_state.prd_text}\n\n"
         f"{qa_history}"
-        f"User Clarifications:\n{model_state.user_answers}\n"
+        f"User Clarifications (already answered by the user):\n{answers_text}\n\n"
+        + (
+            "The user has answered the above questions. "
+            "Carefully evaluate whether the answers, combined with the initial description, "
+            "provide enough detail to design a deployable cloud architecture. "
+            "Set is_information_enough to true if sufficient. "
+            "Only ask NEW follow-up questions if genuinely critical information is still missing — "
+            "do NOT repeat questions the user has already addressed.\n"
+            if has_answers else ""
+        )
     )
 
     try:
@@ -328,23 +354,25 @@ def web_search_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
     # Fetch only trusted official docs, preserving query/source provenance.
     for query in model_state.research_queries:
         try:
+            # Trim overly long queries — DuckDuckGo site: searches work better under ~8 words
+            trimmed_query = ' '.join(query.split()[:8])
             query_start = time.perf_counter()
             items = web_search(
-                query=query,
+                query=trimmed_query,
                 cloud_provider=model_state.cloud_provider,
                 max_results=4,
             )
             logger.info(
-                "Fetched %s result(s) for %s in %.2f seconds",
+                "Fetched %s result(s) for '%s' in %.2f seconds",
                 len(items),
-                query,
+                trimmed_query,
                 time.perf_counter() - query_start,
             )
             for item in items:
-                item["query"] = query
+                item["query"] = trimmed_query
                 results.append(ResearchResult.model_validate(item))
         except Exception as exc:  # noqa: BLE001
-            _safe_errors(model_state, f"search_failed[{query}]: {exc}")
+            _safe_errors(model_state, f"search_failed[{trimmed_query}]: {exc}")
 
     model_state.research_results = results
     logger.info(
@@ -439,7 +467,17 @@ def plan_node(state: dict[str, Any] | AgentState) -> dict[str, Any]:
             "PRD generation completed in %.2f seconds",
             time.perf_counter() - start,
         )
-        payload = PlannerOutput.model_validate(_extract_json(str(response.content)))
+        raw = _extract_json(str(response.content))
+        # 7B models often return a flat object with plan_markdown at the top level
+        # and omit the plan_json wrapper entirely.  Normalise before validation.
+        if "plan_json" not in raw:
+            # Try to promote top-level fields into plan_json, then strip them.
+            non_markdown = {k: v for k, v in raw.items() if k != "plan_markdown"}
+            raw = {
+                "plan_markdown": raw.get("plan_markdown", ""),
+                "plan_json": non_markdown if non_markdown else {},
+            }
+        payload = PlannerOutput.model_validate(raw)
 
         # CoT is not logged; show a safe reasoning summary from structured model output.
         logger.info(
