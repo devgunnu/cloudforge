@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForgeStore } from '@/store/forgeStore';
-import { runDeploy, MOCK_ARCH_NODES, MOCK_ARCH_EDGES } from '@/lib/forge-agents';
+import { runDeploy } from '@/lib/forge-agents';
 import type { ForgeArchNode, ForgeArchEdge } from '@/store/forgeStore';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -370,6 +370,7 @@ export default function DeployPanel() {
     updateNodeDeployStatus,
     setStageStatus,
     addChatMessage,
+    currentProjectId,
   } = useForgeStore();
 
   const agentRan = useRef(false);
@@ -379,9 +380,8 @@ export default function DeployPanel() {
   const deployStatus = stageStatus.deploy;
   const isDone = deployStatus === 'done';
 
-  // Resolve nodes and edges — fall back to mocks if architectureData not yet populated
-  const nodes: ForgeArchNode[] = architectureData?.nodes ?? MOCK_ARCH_NODES;
-  const edges: ForgeArchEdge[] = architectureData?.edges ?? MOCK_ARCH_EDGES;
+  const nodes: ForgeArchNode[] = architectureData?.nodes ?? [];
+  const edges: ForgeArchEdge[] = architectureData?.edges ?? [];
 
   // Run deploy agent on mount if status is 'processing'
   useEffect(() => {
@@ -398,16 +398,13 @@ export default function DeployPanel() {
     });
 
     const files = Object.values(generatedFiles);
-    const archData = architectureData ?? {
-      nodes: MOCK_ARCH_NODES,
-      edges: MOCK_ARCH_EDGES,
-    };
+    const archData = architectureData ?? { nodes: [], edges: [] };
 
     runDeploy(files, archData, {
       onLog: (line: string) => addDeployLog(line),
       onNodeStatus: (nodeId: string, status: 'provisioning' | 'live') =>
         updateNodeDeployStatus(nodeId, status),
-    }).then(() => {
+    }, currentProjectId ?? undefined).then(() => {
       setStageStatus('deploy', 'done');
       addChatMessage('deploy', {
         id: `deploy-done-${Date.now()}`,

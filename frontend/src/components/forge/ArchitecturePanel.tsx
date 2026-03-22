@@ -1,15 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForgeStore } from '@/store/forgeStore';
 import ArchDiagram, { convertForgeNodes, convertForgeEdges } from '@/components/cloudforge/ArchDiagram';
 import {
   runAgent2,
   AGENT2_STEPS,
-  MOCK_ARCH_NODES,
-  MOCK_ARCH_EDGES,
 } from '@/lib/forge-agents';
 import type { ForgeArchNode } from '@/store/forgeStore';
 
@@ -323,6 +321,8 @@ function NodeInspector({ node, onClose }: NodeInspectorProps) {
 
 export default function ArchitecturePanel() {
   const router = useRouter();
+  const params = useParams();
+  const id = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
   const {
     constraints,
     architectureData,
@@ -331,6 +331,7 @@ export default function ArchitecturePanel() {
     setStageStatus,
     addChatMessage,
     advanceStage,
+    currentProjectId,
   } = useForgeStore();
 
   const [activeStep, setActiveStep] = useState(0);
@@ -358,7 +359,7 @@ export default function ArchitecturePanel() {
 
     runAgent2(constraints, (step) => {
       setActiveStep(step);
-    }).then((data) => {
+    }, currentProjectId ?? undefined).then((data) => {
       setArchitectureData(data);
       setStageStatus('architecture', 'done');
       setProcessing(false);
@@ -383,7 +384,7 @@ export default function ArchitecturePanel() {
 
   const selectedNode =
     selectedNodeId != null
-      ? (architectureData?.nodes ?? MOCK_ARCH_NODES).find(
+      ? (architectureData?.nodes ?? []).find(
           (n) => n.id === selectedNodeId,
         ) ?? null
       : null;
@@ -398,11 +399,11 @@ export default function ArchitecturePanel() {
 
   function handleContinueToBuild() {
     advanceStage();
-    router.push('/app/build');
+    router.push(`/app/${id}/build`);
   }
 
-  const displayNodes = architectureData?.nodes ?? MOCK_ARCH_NODES;
-  const displayEdges = architectureData?.edges ?? MOCK_ARCH_EDGES;
+  const displayNodes = architectureData?.nodes ?? [];
+  const displayEdges = architectureData?.edges ?? [];
 
   return (
     <div

@@ -1,5 +1,5 @@
-import ArchitecturePanel from '@/components/forge/ArchitecturePanel';
+import { redirect } from 'next/navigation';
 
-export default function ArchitecturePage() {
-  return <ArchitecturePanel />;
+export default function OldArchitecturePage() {
+  redirect('/dashboard');
 }

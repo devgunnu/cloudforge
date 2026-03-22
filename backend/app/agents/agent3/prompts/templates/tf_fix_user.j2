@@ -1,0 +1,12 @@
+Fix attempt {{ attempt }} of {{ max_attempts }}.
+
+## Validation Errors
+{{ error_summary }}
+
+## Current Terraform Files
+{% for filename, content in tf_files.items() %}
+### {{ filename }}
+```hcl
+{{ content }}
+```
+{% endfor %}

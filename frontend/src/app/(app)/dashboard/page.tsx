@@ -1,19 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Plus, Globe2, Clock } from 'lucide-react';
+import { Plus, Globe2, Clock, Trash2 } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useForgeStore } from '@/store/forgeStore';
+import { useAuthStore } from '@/store/authStore';
 import type { Project } from '@/lib/mock-data';
 import type { ForgeStage } from '@/store/forgeStore';
 import StatusBadge from '@/components/cloudforge/StatusBadge';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function ProjectCard({ project, index, onClick }: { project: Project; index: number; onClick?: () => void }) {
+function ProjectCard({ project, index, onClick, onDelete }: { project: Project; index: number; onClick?: () => void; onDelete?: () => void }) {
   const [hovered, setHovered] = useState(false);
+  const [deleteHovered, setDeleteHovered] = useState(false);
 
   return (
     <motion.article
@@ -28,6 +30,7 @@ function ProjectCard({ project, index, onClick }: { project: Project; index: num
       tabIndex={0}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClick?.(); }}
       style={{
+        position: 'relative',
         background: 'var(--lp-surface)',
         border: `0.5px solid ${hovered ? 'var(--lp-border-hover)' : 'var(--lp-border)'}`,
         borderRadius: '12px',
@@ -36,9 +39,39 @@ function ProjectCard({ project, index, onClick }: { project: Project; index: num
         transition: 'border-color 150ms ease',
         display: 'flex',
         flexDirection: 'column',
+        minHeight: '180px',
       }}
       aria-label={`Project: ${project.name}, status: ${project.status}`}
     >
+      {hovered && (
+        <button
+          type="button"
+          aria-label={`Delete project ${project.name}`}
+          onMouseEnter={() => setDeleteHovered(true)}
+          onMouseLeave={() => setDeleteHovered(false)}
+          onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
+          style={{
+            position: 'absolute',
+            top: '10px',
+            right: '10px',
+            width: '28px',
+            height: '28px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'transparent',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            color: deleteHovered ? 'var(--lp-error, #ef4444)' : 'var(--lp-text-hint)',
+            transition: 'color 150ms ease',
+            padding: 0,
+          }}
+        >
+          <Trash2 size={14} aria-hidden="true" />
+        </button>
+      )}
+
       {/* Top row: name + badge */}
       <div
         style={{
@@ -125,77 +158,6 @@ function ProjectCard({ project, index, onClick }: { project: Project; index: num
   );
 }
 
-function NewProjectCard({ index, onClick }: { index: number; onClick: () => void }) {
-  const [hovered, setHovered] = useState(false);
-
-  return (
-    <motion.button
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{
-        duration: 0.35,
-        ease: [0.16, 1, 0.3, 1],
-        delay: index * 0.08,
-      }}
-      whileHover={{ y: -2 }}
-      onHoverStart={() => setHovered(true)}
-      onHoverEnd={() => setHovered(false)}
-      style={{
-        background: 'transparent',
-        border: `1px dashed ${hovered ? 'var(--lp-accent)' : 'var(--lp-border-hover)'}`,
-        borderRadius: '12px',
-        padding: '20px',
-        cursor: 'pointer',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '8px',
-        minHeight: '160px',
-        transition: 'border-color 150ms ease',
-        width: '100%',
-        textAlign: 'center',
-      }}
-      aria-label="Create a new project"
-      type="button"
-      onClick={onClick}
-    >
-      <span
-        aria-hidden="true"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: hovered ? 'var(--lp-accent)' : 'var(--lp-text-hint)',
-          transition: 'color 150ms ease',
-        }}
-      >
-        <Plus size={24} />
-      </span>
-      <span
-        style={{
-          fontFamily: 'var(--font-inter), system-ui, sans-serif',
-          fontSize: '13px',
-          fontWeight: 500,
-          color: hovered ? 'var(--lp-text-primary)' : 'var(--lp-text-secondary)',
-          transition: 'color 150ms ease',
-        }}
-      >
-        New project
-      </span>
-      <span
-        style={{
-          fontFamily: 'var(--font-inter), system-ui, sans-serif',
-          fontSize: '11px',
-          color: 'var(--lp-text-hint)',
-        }}
-      >
-        Start from a PRD or idea
-      </span>
-    </motion.button>
-  );
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const OLD_STAGE_TO_FORGE: Record<string, ForgeStage> = {
@@ -206,19 +168,87 @@ const OLD_STAGE_TO_FORGE: Record<string, ForgeStage> = {
 };
 
 export default function DashboardPage() {
-  const { projects } = useProjectStore();
+  const { projects, loadProjects, createApiProject, deleteApiProject, isLoading, loadError } = useProjectStore();
+  const { accessToken } = useAuthStore();
   const router = useRouter();
 
-  function handleNewProject() {
-    useForgeStore.getState().setProjectName('New Project');
-    useForgeStore.getState().setStageStatus('requirements', 'processing');
-    router.push('/app/requirements');
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    if (accessToken) {
+      loadProjects(accessToken);
+    }
+  }, [accessToken, loadProjects]);
+
+  async function handleNewProject() {
+    if (!accessToken) {
+      setError('You must be logged in to create a project.');
+      return;
+    }
+    setIsCreating(true);
+    setError(null);
+    try {
+      const name = `project-${Date.now()}`;
+      const project = await createApiProject(name, accessToken);
+      useForgeStore.getState().setProjectName(project.name);
+      useForgeStore.getState().setCurrentProjectId(project.id);
+      useForgeStore.getState().setStageStatus('requirements', 'locked');
+      useForgeStore.getState().setPrdText('');
+      router.push(`/app/${project.id}/requirements`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create project. Please try again.');
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  async function handleDeleteProject(id: string) {
+    if (!accessToken) return;
+    setIsDeleting(true);
+    try {
+      await deleteApiProject(id, accessToken);
+      setDeleteTarget(null);
+    } catch {
+      // stay open on error
+    } finally {
+      setIsDeleting(false);
+    }
   }
 
   function handleOpenProject(project: Project) {
     useForgeStore.getState().setProjectName(project.name);
+    useForgeStore.getState().setCurrentProjectId(project.id);
+    useForgeStore.getState().hydrateProject(project.id);
     const forgeStage: ForgeStage = OLD_STAGE_TO_FORGE[project.stage] ?? 'requirements';
-    router.push(`/app/${forgeStage}`);
+    router.push(`/app/${project.id}/${forgeStage}`);
+  }
+
+  if (isLoading && projects.length === 0) {
+    return (
+      <p style={{ fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: '14px', color: 'var(--lp-text-secondary)', padding: '32px 40px' }}>
+        Loading...
+      </p>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div style={{ padding: '32px 40px' }}>
+        <p style={{ fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: '14px', color: 'var(--lp-error, #ef4444)' }}>
+          {loadError}
+        </p>
+        <button
+          type="button"
+          onClick={() => accessToken && loadProjects(accessToken)}
+          style={{ marginTop: '12px', fontFamily: 'var(--font-inter), system-ui, sans-serif', fontSize: '13px', color: 'var(--lp-accent)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+        >
+          Retry
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -262,14 +292,30 @@ export default function DashboardPage() {
             fontSize: '13px',
             fontWeight: 500,
             fontFamily: 'var(--font-inter), system-ui, sans-serif',
+            opacity: isCreating ? 0.6 : 1,
+            cursor: isCreating ? 'not-allowed' : 'pointer',
           }}
           aria-label="Create a new project"
           onClick={handleNewProject}
+          disabled={isCreating}
         >
           <Plus size={14} aria-hidden="true" />
-          New project
+          {isCreating ? 'Creating…' : 'New project'}
         </button>
       </div>
+
+      {error && (
+        <p
+          style={{
+            fontFamily: 'var(--font-inter), system-ui, sans-serif',
+            fontSize: '12px',
+            color: 'var(--lp-error, #ef4444)',
+            marginTop: '8px',
+          }}
+        >
+          {error}
+        </p>
+      )}
 
       {/* Empty state */}
       {projects.length === 0 && (
@@ -314,15 +360,107 @@ export default function DashboardPage() {
               project={project}
               index={i}
               onClick={() => handleOpenProject(project)}
+              onDelete={() => setDeleteTarget(project.id)}
             />
           </div>
         ))}
 
-        {/* Empty state / new project card */}
-        <div role="listitem">
-          <NewProjectCard index={projects.length} onClick={handleNewProject} />
-        </div>
       </div>
+
+      {deleteTarget !== null && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+          }}
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            style={{
+              background: 'var(--lp-surface)',
+              border: '1px solid var(--lp-border)',
+              borderRadius: '12px',
+              padding: '24px',
+              maxWidth: '400px',
+              width: '100%',
+              margin: '0 16px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p
+              style={{
+                fontFamily: 'var(--font-inter), system-ui, sans-serif',
+                fontSize: '14px',
+                fontWeight: 600,
+                color: 'var(--lp-text-primary)',
+                marginBottom: '8px',
+              }}
+            >
+              Delete project?
+            </p>
+            <p
+              style={{
+                fontFamily: 'var(--font-inter), system-ui, sans-serif',
+                fontSize: '13px',
+                color: 'var(--lp-text-secondary)',
+                marginBottom: '20px',
+                lineHeight: 1.5,
+              }}
+            >
+              This action cannot be undone. All project data will be permanently deleted.
+            </p>
+            <div
+              style={{
+                display: 'flex',
+                gap: '8px',
+                justifyContent: 'flex-end',
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                style={{
+                  fontFamily: 'var(--font-inter), system-ui, sans-serif',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  padding: '7px 14px',
+                  borderRadius: '7px',
+                  border: '1px solid var(--lp-border)',
+                  background: 'transparent',
+                  color: 'var(--lp-text-secondary)',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteProject(deleteTarget)}
+                disabled={isDeleting}
+                style={{
+                  fontFamily: 'var(--font-inter), system-ui, sans-serif',
+                  fontSize: '13px',
+                  fontWeight: 500,
+                  padding: '7px 14px',
+                  borderRadius: '7px',
+                  border: 'none',
+                  background: '#ef4444',
+                  color: '#ffffff',
+                  cursor: isDeleting ? 'not-allowed' : 'pointer',
+                  opacity: isDeleting ? 0.6 : 1,
+                }}
+              >
+                {isDeleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
