@@ -21,13 +21,13 @@ This service is part of a larger architecture. Understand the full system contex
 {% if incoming %}
 This service **receives** from:
 {% for conn in incoming %}
-  - `{{ conn.from }}` via {{ conn.via }}
+  - `{{ conn.from }}` (type: {{ conn.service_type | default("unknown") }}) via {{ conn.via }}
 {% endfor %}
 {% endif %}
 {% if outgoing %}
 This service **calls / triggers**:
 {% for conn in outgoing %}
-  - `{{ conn.to }}` via {{ conn.via }}
+  - `{{ conn.to }}` (type: {{ conn.service_type | default("unknown") }}) via {{ conn.via }}
 {% endfor %}
 {% endif %}
 {% endif %}
