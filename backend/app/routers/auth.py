@@ -3,8 +3,10 @@ from secrets import token_urlsafe
 
 import httpx
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from app.config import settings
 from app.core.dependencies import get_current_user
@@ -20,6 +22,8 @@ from app.db.mongo import users_col
 from app.schemas.auth import AuthResponse, LoginRequest, RefreshResponse, RegisterRequest, UserPublic
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+limiter = Limiter(key_func=get_remote_address)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -37,7 +41,8 @@ def _user_to_public(user: dict) -> UserPublic:
 
 
 @router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
-async def register(payload: RegisterRequest) -> AuthResponse:
+@limiter.limit("5/minute")
+async def register(request: Request, payload: RegisterRequest) -> AuthResponse:
     col = users_col()
 
     if await col.find_one({"email": payload.email}):
@@ -72,7 +77,8 @@ async def register(payload: RegisterRequest) -> AuthResponse:
 
 
 @router.post("/login", response_model=AuthResponse)
-async def login(payload: LoginRequest) -> AuthResponse:
+@limiter.limit("10/minute")
+async def login(request: Request, payload: LoginRequest) -> AuthResponse:
     col = users_col()
     user = await col.find_one({"email": payload.email})
 
@@ -95,7 +101,8 @@ async def login(payload: LoginRequest) -> AuthResponse:
 
 
 @router.post("/refresh", response_model=RefreshResponse)
-async def refresh_token(token: str = Depends(oauth2_scheme)) -> RefreshResponse:
+@limiter.limit("20/minute")
+async def refresh_token(request: Request, token: str = Depends(oauth2_scheme)) -> RefreshResponse:
     payload = decode_token(token)
 
     if payload.get("type") != "refresh":
@@ -131,7 +138,8 @@ async def me(current_user: dict = Depends(get_current_user)) -> UserPublic:
 
 
 @router.get("/github")
-async def github_oauth_init(current_user: dict = Depends(get_current_user)) -> dict:
+@limiter.limit("10/minute")
+async def github_oauth_init(request: Request, current_user: dict = Depends(get_current_user)) -> dict:
     state = token_urlsafe(32)
     _github_states[state] = {
         "user_id": str(current_user["_id"]),
@@ -148,7 +156,8 @@ async def github_oauth_init(current_user: dict = Depends(get_current_user)) -> d
 
 
 @router.get("/github/callback")
-async def github_oauth_callback(code: str, state: str) -> dict:
+@limiter.limit("10/minute")
+async def github_oauth_callback(request: Request, code: str, state: str) -> dict:
     entry = _github_states.get(state)
     if not entry:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired state")
