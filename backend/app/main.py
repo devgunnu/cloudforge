@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from app.config import settings
-from app.routers import health
+from app.routers import health, workflows
 
 app = FastAPI(
     title=settings.app_name,
@@ -8,6 +8,7 @@ app = FastAPI(
 )
 
 app.include_router(health.router)
+app.include_router(workflows.router)
 
 
 @app.get("/")
