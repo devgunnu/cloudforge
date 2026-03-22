@@ -674,11 +674,14 @@ function ConfigPanel({ node, onClose }: ConfigPanelProps) {
   const serviceConf = AWS_SERVICE_CONFIG[service];
   const configData = SERVICE_CONFIG_DATA[service];
 
-  // Merge node-level config overrides with defaults
-  const configProps = [
-    ...(configData?.configProps ?? []),
-    ...Object.entries(node.config ?? {}).map(([key, value]) => ({ key, value })),
-  ];
+  // Merge node-level config overrides with defaults; overrides win on duplicate keys
+  const configPropsMap = new Map<string, string>(
+    (configData?.configProps ?? []).map(({ key, value }) => [key, value]),
+  );
+  for (const [key, value] of Object.entries(node.config ?? {})) {
+    configPropsMap.set(key, value);
+  }
+  const configProps = Array.from(configPropsMap, ([key, value]) => ({ key, value }));
 
   const tierColors: Record<string, string> = {
     Serverless: '#01A88D',
