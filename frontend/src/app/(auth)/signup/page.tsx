@@ -4,12 +4,78 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, ArrowRight, Check } from 'lucide-react';
-import { useAuthStore } from '@/store/authStore';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { Github, Eye, EyeOff, ArrowRight, Check } from 'lucide-react';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
+
+function OAuthButton({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        flex: 1,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '8px',
+        padding: '10px 16px',
+        background: hovered ? 'var(--lp-elevated)' : 'var(--lp-surface)',
+        border: `0.5px solid ${hovered ? 'var(--lp-border-hover)' : 'var(--lp-border)'}`,
+        borderRadius: '9px',
+        fontFamily: 'var(--font-inter), system-ui, sans-serif',
+        fontSize: '13px',
+        fontWeight: 500,
+        color: 'var(--lp-text-primary)',
+        cursor: 'pointer',
+        transition: 'all 120ms ease',
+      }}
+      aria-label={`Continue with ${label}`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function Divider() {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        margin: '20px 0',
+      }}
+      aria-hidden="true"
+    >
+      <div style={{ flex: 1, height: '0.5px', background: 'var(--lp-border)' }} />
+      <span
+        style={{
+          fontFamily: 'var(--font-inter), system-ui, sans-serif',
+          fontSize: '11px',
+          color: 'var(--lp-text-hint)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.08em',
+        }}
+      >
+        or
+      </span>
+      <div style={{ flex: 1, height: '0.5px', background: 'var(--lp-border)' }} />
+    </div>
+  );
+}
 
 function FormInput({
   id,
@@ -147,38 +213,24 @@ function PasswordStrength({ password }: { password: string }) {
 
 export default function SignupPage() {
   const router = useRouter();
-  const setAuth = useAuthStore((s) => s.setAuth);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError(null);
-    try {
-      const resp = await fetch(`${API_URL}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: name, email, password }),
-      });
-      if (!resp.ok) {
-        const body = await resp.json().catch(() => ({}));
-        setError((body as { detail?: string }).detail || 'Registration failed. Please try again.');
-        return;
-      }
-      const data = await resp.json();
-      setAuth(data.access_token, data.refresh_token, data.user);
+    setTimeout(() => {
       router.push('/dashboard');
-    } catch {
-      setError('Unable to reach the server. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    }, 900);
+  }
+
+  function handleOAuth() {
+    setLoading(true);
+    window.location.href = 'http://localhost:8000/auth/github/login';
   }
 
   return (
@@ -254,24 +306,16 @@ export default function SignupPage() {
           Start building infrastructure in minutes
         </p>
 
-        {/* Error message */}
-        {error && (
-          <div
-            role="alert"
-            style={{
-              marginBottom: '14px',
-              padding: '9px 12px',
-              background: 'rgba(248,113,113,0.08)',
-              border: '0.5px solid rgba(248,113,113,0.3)',
-              borderRadius: '8px',
-              fontFamily: 'var(--font-inter), system-ui, sans-serif',
-              fontSize: '12px',
-              color: '#f87171',
-            }}
-          >
-            {error}
-          </div>
-        )}
+        {/* OAuth */}
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <OAuthButton
+            icon={<Github size={15} aria-hidden="true" />}
+            label="GitHub"
+            onClick={handleOAuth}
+          />
+        </div>
+
+        <Divider />
 
         {/* Form */}
         <form onSubmit={handleSubmit} noValidate>

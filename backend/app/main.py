@@ -1,14 +1,10 @@
-import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import settings
+
 from app.db.mongo import connect_mongo, disconnect_mongo
 from app.routers import agent3, auth, health, projects, workflows
 from app.routers.architecture import router as architecture_router
@@ -23,6 +19,7 @@ from app.routers.prd import router as prd_router
 logger = logging.getLogger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
+from app.routers import auth
 
 
 @asynccontextmanager
@@ -59,21 +56,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
-
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url],
+    allow_origins=["http://localhost:3000"],  # Frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(health.router)
-app.include_router(auth.router)
-app.include_router(projects.router)
 app.include_router(workflows.router)
 app.include_router(architecture_router)
 app.include_router(architecture_sse_router)
@@ -84,6 +76,7 @@ app.include_router(build_router)
 app.include_router(deploy_router)
 app.include_router(files_router)
 app.include_router(history_router)
+app.include_router(auth.router)
 
 
 @app.get("/")

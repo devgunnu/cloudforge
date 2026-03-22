@@ -1,31 +1,35 @@
 import LandingNav from '@/components/landing/LandingNav';
 import Hero from '@/components/landing/Hero';
 import SocialProof from '@/components/landing/SocialProof';
+import ProblemSection from '@/components/landing/ProblemSection';
 import HowItWorks from '@/components/landing/HowItWorks';
+import GraphEngine from '@/components/landing/GraphEngine';
+import GeneratedOutput from '@/components/landing/GeneratedOutput';
 import Features from '@/components/landing/Features';
-import TerraformPreview from '@/components/landing/TerraformPreview';
 import CTA from '@/components/landing/CTA';
 
 export const metadata = {
-  title: 'CloudForge — Deploy AWS infrastructure by drawing it',
+  title: 'CloudForge — Your PRD. Your GitHub. Your AWS. Deployed.',
   description:
-    'Drag. Connect. Deploy. CloudForge turns your architecture diagram into real Terraform — powered by Claude AI.',
+    'Upload your requirements. An AI agent refines them. A graph engine validates your architecture. Your scaffold commits to GitHub. Your AWS goes live.',
 };
 
 export default function LandingPage() {
   return (
     <main style={{ background: 'var(--lp-bg)', minHeight: '100vh' }}>
       <LandingNav />
-      <div style={{ paddingTop: '52px' }}>
+      <div style={{ paddingTop: '60px' }}>
         <Hero />
         <SocialProof />
+        <ProblemSection />
         <div id="how-it-works">
           <HowItWorks />
         </div>
+        <GraphEngine />
+        <GeneratedOutput />
         <div id="features">
           <Features />
         </div>
-        <TerraformPreview />
         <CTA />
       </div>
     </main>
