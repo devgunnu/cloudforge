@@ -4,7 +4,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { FileCode2 } from 'lucide-react';
 import { useForgeStore } from '@/store/forgeStore';
-import { runAgent3 } from '@/lib/forge-agents';
+import { runAgent3, MOCK_ARCH_NODES, MOCK_ARCH_EDGES } from '@/lib/forge-agents';
 import type { GeneratedFile } from '@/store/forgeStore';
 
 // ── Syntax tokenizer ──────────────────────────────────────────────────────────
@@ -227,8 +227,7 @@ export default function BuildPanel() {
 
   useEffect(() => {
     if (agentRan.current) return;
-    if (buildStatus !== 'processing') return;
-    if (!architectureData) return;
+    if (buildStatus !== 'processing' && buildStatus !== 'locked') return;
 
     agentRan.current = true;
 
@@ -251,7 +250,9 @@ export default function BuildPanel() {
       },
     });
 
-    runAgent3(architectureData, {
+    const archData = architectureData ?? { nodes: MOCK_ARCH_NODES, edges: MOCK_ARCH_EDGES };
+
+    runAgent3(archData, {
       onFileReady: (file: GeneratedFile) => {
         addGeneratedFile(file);
 
@@ -283,6 +284,13 @@ export default function BuildPanel() {
         role: 'agent',
         content: 'Build complete. 5 files generated. Deploy button is now unlocked.',
       });
+    }).catch(() => {
+      addChatMessage('build', {
+        id: `agent3-error-${Date.now()}`,
+        role: 'agent',
+        content: 'Code generation failed. Please try again.',
+      });
+      agentRan.current = false;
     });
   }, [
     buildStatus,

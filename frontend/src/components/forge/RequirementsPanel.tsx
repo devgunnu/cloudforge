@@ -64,10 +64,10 @@ export default function RequirementsPanel() {
     prevDoneRef.current = isDone;
   }, [isDone]);
 
-  // Run agent 1 on mount if still processing (Strict Mode safe via ref guard)
+  // Run agent 1 on mount if processing or locked (dev direct-nav) — Strict Mode safe via ref guard
   useEffect(() => {
     if (agentRan.current) return;
-    if (reqStatus !== 'processing') return;
+    if (reqStatus !== 'processing' && reqStatus !== 'locked') return;
 
     agentRan.current = true;
 
@@ -97,6 +97,13 @@ export default function RequirementsPanel() {
         content: `Extracted ${chips.length} constraints. Ready to generate the architecture.`,
         chips,
       });
+    }).catch(() => {
+      addChatMessage('requirements', {
+        id: `agent1-error-${Date.now()}`,
+        role: 'agent',
+        content: 'Failed to extract constraints. Please try again.',
+      });
+      agentRan.current = false;
     });
   }, [reqStatus, prdText, addChatMessage, setConstraints, setStageStatus]);
 

@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Plus, Globe2, Clock } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
+import { useForgeStore } from '@/store/forgeStore';
 import type { Project } from '@/lib/mock-data';
+import type { ForgeStage } from '@/store/forgeStore';
 import StatusBadge from '@/components/cloudforge/StatusBadge';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -196,13 +198,27 @@ function NewProjectCard({ index, onClick }: { index: number; onClick: () => void
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+const OLD_STAGE_TO_FORGE: Record<string, ForgeStage> = {
+  prd: 'requirements',
+  arch: 'architecture',
+  build: 'build',
+  live: 'deploy',
+};
+
 export default function DashboardPage() {
-  const { projects, createProject } = useProjectStore();
+  const { projects } = useProjectStore();
   const router = useRouter();
 
   function handleNewProject() {
-    const id = createProject('new-project');
-    router.push(`/project/${id}/prd`);
+    useForgeStore.getState().setProjectName('New Project');
+    useForgeStore.getState().setStageStatus('requirements', 'processing');
+    router.push('/app/requirements');
+  }
+
+  function handleOpenProject(project: Project) {
+    useForgeStore.getState().setProjectName(project.name);
+    const forgeStage: ForgeStage = OLD_STAGE_TO_FORGE[project.stage] ?? 'requirements';
+    router.push(`/app/${forgeStage}`);
   }
 
   return (
@@ -297,7 +313,7 @@ export default function DashboardPage() {
             <ProjectCard
               project={project}
               index={i}
-              onClick={() => router.push(`/project/${project.id}/${project.stage}`)}
+              onClick={() => handleOpenProject(project)}
             />
           </div>
         ))}

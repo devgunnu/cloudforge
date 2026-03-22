@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCanvasStore } from '@/store/canvasStore';
 import type { DeployStatus } from '@/store/canvasStore';
@@ -115,7 +116,7 @@ export default function Navbar() {
         </div>
 
         {/* Back to landing */}
-        <a
+        <Link
           href="/"
           style={{
             fontFamily: 'var(--font-jetbrains-mono), monospace',
@@ -130,7 +131,7 @@ export default function Navbar() {
           onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--cf-text-hint)'; }}
         >
           ← home
-        </a>
+        </Link>
 
         {/* Spacer */}
         <div style={{ flex: 1 }} />

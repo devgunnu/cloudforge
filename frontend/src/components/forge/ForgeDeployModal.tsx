@@ -1,8 +1,9 @@
 'use client';
 
+import { useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, X } from 'lucide-react';
 import { useForgeStore } from '@/store/forgeStore';
 
 export default function ForgeDeployModal() {
@@ -21,54 +22,118 @@ export default function ForgeDeployModal() {
     setDeployModalOpen(false);
   }
 
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Focus trap + Escape key
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      handleCancel();
+      return;
+    }
+    if (e.key !== 'Tab' || !modalRef.current) return;
+
+    const focusable = modalRef.current.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (e.shiftKey && document.activeElement === first) {
+      last.focus();
+      e.preventDefault();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      first.focus();
+      e.preventDefault();
+    }
+  }, []);
+
+  // Attach listener and auto-focus first button on open
+  useEffect(() => {
+    if (!deployModalOpen) return;
+    window.addEventListener('keydown', handleKeyDown);
+
+    // Auto-focus the close button
+    requestAnimationFrame(() => {
+      const el = modalRef.current?.querySelector<HTMLElement>('button');
+      el?.focus();
+    });
+
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [deployModalOpen, handleKeyDown]);
+
   return (
     <AnimatePresence>
       {deployModalOpen && (
-        <>
-          {/* Backdrop */}
+        /* Full-screen flex container — centers modal and acts as backdrop */
+        <motion.div
+          key="backdrop"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          onClick={handleCancel}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            backdropFilter: 'blur(4px)',
+            zIndex: 50,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {/* Modal — stop click from bubbling to backdrop */}
           <motion.div
-            key="backdrop"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={handleCancel}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              background: 'rgba(0,0,0,0.7)',
-              backdropFilter: 'blur(4px)',
-              zIndex: 50,
-            }}
-            aria-hidden="true"
-          />
-
-          {/* Modal */}
-          <motion.dialog
+            ref={modalRef}
             key="modal"
-            open
-            initial={{ opacity: 0, scale: 0.95, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 8 }}
+            role="dialog"
+            aria-modal="true"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            onClick={(e) => e.stopPropagation()}
             style={{
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
               width: '100%',
               maxWidth: '440px',
               background: 'var(--lp-surface)',
               border: '0.5px solid var(--lp-border-hover)',
               borderRadius: '16px',
               padding: '28px',
-              zIndex: 60,
               boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
-              margin: 0,
+              position: 'relative',
             }}
             aria-labelledby="deploy-modal-title"
             aria-describedby="deploy-modal-desc"
           >
+            {/* X close button */}
+            <button
+              type="button"
+              onClick={handleCancel}
+              aria-label="Close"
+              style={{
+                position: 'absolute',
+                top: '16px',
+                right: '16px',
+                width: '28px',
+                height: '28px',
+                borderRadius: '7px',
+                background: 'transparent',
+                border: '0.5px solid var(--lp-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                color: 'var(--lp-text-hint)',
+                transition: 'all 120ms ease',
+              }}
+            >
+              <X size={13} />
+            </button>
+
             {/* Header */}
             <div
               style={{
@@ -76,6 +141,7 @@ export default function ForgeDeployModal() {
                 alignItems: 'flex-start',
                 gap: '12px',
                 marginBottom: '20px',
+                paddingRight: '32px',
               }}
             >
               <div
@@ -215,8 +281,8 @@ export default function ForgeDeployModal() {
                 <span aria-hidden="true">→</span>
               </button>
             </div>
-          </motion.dialog>
-        </>
+          </motion.div>
+        </motion.div>
       )}
     </AnimatePresence>
   );

@@ -99,8 +99,8 @@ export default function CTA() {
             fontWeight: 400,
           }}
         >
-          Join the waitlist for early access, or open the builder now — no
-          account required.
+          Join the waitlist for early access, or sign in to start
+          building right away.
         </p>
 
         <AnimatePresence mode="wait">

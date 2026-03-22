@@ -17,7 +17,8 @@ function StageBreadcrumb() {
   const router = useRouter();
 
   function handleStageClick(stage: ForgeStage) {
-    if (stageStatus[stage] === 'locked') return;
+    const isDev = process.env.NODE_ENV === 'development';
+    if (!isDev && stageStatus[stage] === 'locked') return;
     navigateToStage(stage);
     router.push(`/app/${stage}`);
   }
@@ -41,7 +42,8 @@ function StageBreadcrumb() {
         const isDone = status === 'done';
         const isLocked = status === 'locked';
 
-        const labelColor = isLocked
+        const isDev = process.env.NODE_ENV === 'development';
+        const labelColor = isLocked && !isDev
           ? 'var(--lp-text-hint)'
           : isActive
             ? 'var(--lp-text-primary)'
@@ -69,7 +71,7 @@ function StageBreadcrumb() {
               type="button"
               role="tab"
               aria-selected={isActive}
-              aria-disabled={isLocked}
+              aria-disabled={isLocked && process.env.NODE_ENV !== 'development'}
               onClick={() => handleStageClick(stage)}
               style={{
                 position: 'relative',
@@ -79,7 +81,7 @@ function StageBreadcrumb() {
                 padding: '5px 10px',
                 background: 'transparent',
                 border: 'none',
-                cursor: isLocked ? 'not-allowed' : 'pointer',
+                cursor: isLocked && process.env.NODE_ENV !== 'development' ? 'not-allowed' : 'pointer',
                 borderRadius: '7px',
                 fontFamily: 'var(--font-inter), system-ui, sans-serif',
                 fontSize: '13px',

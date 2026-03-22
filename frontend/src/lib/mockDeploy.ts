@@ -32,7 +32,7 @@ export async function* runMockDeploy(): AsyncGenerator<DeployEvent> {
   // Payload: CloudForgeTopology JSON
   // The Claude agent receives this and runs Terraform via
   // the AWS Cloud Control API MCP server.
-  // Replace the mock fetch below with real integration.
+  // Replace this mock generator with real API integration.
   // ============================================================
   yield { status: 'deploying', logLine: '→ Submitting to provisioning agent...' };
   await delay(700);

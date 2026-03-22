@@ -218,8 +218,8 @@ export function getNodeSubtitle(
     case 'lambda':
       return [
         config.runtime,
-        `${config.memory as number}MB`,
-        `${config.timeout as number}s`,
+        typeof config.memory === 'number' ? `${config.memory}MB` : undefined,
+        typeof config.timeout === 'number' ? `${config.timeout}s` : undefined,
       ]
         .filter(Boolean)
         .join(' · ');
@@ -230,7 +230,7 @@ export function getNodeSubtitle(
         .filter(Boolean)
         .join(' · ');
     case 'ec2':
-      return [config.instanceType, `${config.storageGb as number}GB`]
+      return [config.instanceType, typeof config.storageGb === 'number' ? `${config.storageGb}GB` : undefined]
         .filter(Boolean)
         .join(' · ');
     case 'api-gateway':

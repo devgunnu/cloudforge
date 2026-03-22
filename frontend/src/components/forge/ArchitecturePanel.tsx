@@ -516,10 +516,10 @@ export default function ArchitecturePanel() {
 
   const agentRan = useRef(false);
 
-  // Run Agent 2 on mount if stage is 'processing'
+  // Run Agent 2 on mount if stage is 'processing' or 'locked' (dev direct-nav)
   useEffect(() => {
     if (agentRan.current) return;
-    if (stageStatus.architecture !== 'processing') return;
+    if (stageStatus.architecture !== 'processing' && stageStatus.architecture !== 'locked') return;
 
     agentRan.current = true;
 
@@ -545,6 +545,14 @@ export default function ArchitecturePanel() {
         content:
           'Architecture validated. 2 alternatives considered and rejected. Proceed to Build when ready.',
       });
+    }).catch(() => {
+      setProcessing(false);
+      addChatMessage('architecture', {
+        id: `agent2-error-${Date.now()}`,
+        role: 'agent',
+        content: 'Architecture generation failed. Please try again.',
+      });
+      agentRan.current = false;
     });
   }, [stageStatus.architecture, constraints, addChatMessage, setArchitectureData, setStageStatus]);
 

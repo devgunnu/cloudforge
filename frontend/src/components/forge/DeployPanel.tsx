@@ -415,6 +415,13 @@ export default function DeployPanel() {
         content:
           'Deployment complete. All 5 resources are live. est. $32.70/month.',
       });
+    }).catch(() => {
+      addChatMessage('deploy', {
+        id: `deploy-error-${Date.now()}`,
+        role: 'agent',
+        content: 'Deployment failed. Check logs and try again.',
+      });
+      agentRan.current = false;
     });
   }, [
     deployStatus,
@@ -425,6 +432,55 @@ export default function DeployPanel() {
     setStageStatus,
     addChatMessage,
   ]);
+
+  // Dev-mode: if deploy status is 'locked' (direct nav), run the animation anyway
+  useEffect(() => {
+    if (deployStatus !== 'locked') return;
+
+    const nodeIds = nodes.map((n) => n.id);
+
+    // Reset all to queued first
+    nodeIds.forEach((id) => updateNodeDeployStatus(id, 'queued'));
+
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    const LOG_LINES = [
+      '\u27F3 Initializing Terraform workspace...',
+      '\u27F3 Planning infrastructure changes...',
+      '\u2713 Terraform plan complete \u2014 5 resources to add',
+      '\u27F3 Creating API Gateway REST API...',
+      '\u2713 API Gateway created \u2014 arn:aws:apigateway:us-east-1::...',
+      '\u27F3 Deploying Lambda function...',
+      '\u2713 Lambda deployed \u2014 cf-prod-api:1',
+      '\u27F3 Creating RDS PostgreSQL instance...',
+      '\u27F3 ElastiCache cluster initializing...',
+      '\u2713 ElastiCache cluster ready',
+      '\u2713 RDS instance available \u2014 cf-prod-db.xxx.us-east-1.rds.amazonaws.com',
+      '\u2713 All resources provisioned successfully',
+    ];
+
+    // Stagger provisioning → live per node
+    nodes.forEach((node, i) => {
+      timers.push(setTimeout(() => updateNodeDeployStatus(node.id, 'provisioning'), 800 + i * 600));
+      timers.push(setTimeout(() => updateNodeDeployStatus(node.id, 'live'), 2400 + i * 800));
+    });
+
+    // Stream log lines
+    LOG_LINES.forEach((line, i) => {
+      timers.push(setTimeout(() => addDeployLog(line), 1000 + i * 700));
+    });
+
+    // Mark done after all nodes live
+    timers.push(
+      setTimeout(
+        () => setStageStatus('deploy', 'done'),
+        1000 + nodes.length * 800 + 2000,
+      ),
+    );
+
+    return () => timers.forEach(clearTimeout);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // empty deps — runs once on mount for direct-nav dev case
 
   // Auto-scroll logs to bottom when new lines arrive
   useEffect(() => {

@@ -127,10 +127,26 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
   openFiles: [],
   activeFile: null,
   chatHistory: {
-    requirements: [],
-    architecture: [],
-    build: [],
-    deploy: [],
+    requirements: [{
+      id: 'init-req',
+      role: 'agent' as const,
+      content: "Describe your product and I'll extract the NFR constraints.",
+    }],
+    architecture: [{
+      id: 'init-arch',
+      role: 'agent' as const,
+      content: 'Constraints extracted. Generating AWS architecture now.',
+    }],
+    build: [{
+      id: 'init-build',
+      role: 'agent' as const,
+      content: 'Architecture validated. Generating Terraform + application code.',
+    }],
+    deploy: [{
+      id: 'init-deploy',
+      role: 'agent' as const,
+      content: 'Architecture locked. Beginning infrastructure provisioning.',
+    }],
   },
   buildProgress: 0,
   buildTotal: 5,

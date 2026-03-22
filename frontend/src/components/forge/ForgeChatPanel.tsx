@@ -466,7 +466,7 @@ function FileTree() {
                       />
                       {file.name}
                     </span>
-                    {file.status !== 'modified' || true ? (
+                    {file.status !== 'pending' ? (
                       <span
                         style={{
                           fontFamily: 'var(--font-inter), system-ui, sans-serif',
@@ -478,11 +478,7 @@ function FileTree() {
                         }}
                         aria-label={`Status: ${file.status}`}
                       >
-                        {file.status === 'pending'
-                          ? '···'
-                          : file.status === 'new'
-                            ? 'N'
-                            : 'M'}
+                        {file.status === 'new' ? 'N' : 'M'}
                       </span>
                     ) : null}
                   </button>
