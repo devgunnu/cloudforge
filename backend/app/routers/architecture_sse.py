@@ -187,7 +187,24 @@ async def _stream_arch_start(
             if current_vals.get("error_message"):
                 logger.warning("arch graph interrupt with error_message: %s", current_vals["error_message"])
             arch = _serialize_diagram(current_vals.get("architecture_diagram"))
-            logger.info("[arch stream] interrupt detected, emitting review event")
+
+            # Persist the architecture now — the workflow is paused at review,
+            # so the normal "graph completed" save block below never runs.
+            await architectures_col().update_one(
+                {"session_id": session_id},
+                {
+                    "$set": {
+                        "status": "review_ready",
+                        "architecture_diagram": arch,
+                        "nfr_document": current_vals.get("nfr_document"),
+                        "arch_test_passed": current_vals.get("arch_test_passed"),
+                        "arch_test_violations_count": len(current_vals.get("arch_test_violations") or []),
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                },
+            )
+            logger.info("[arch stream] interrupt: architecture saved to DB, emitting review event")
+
             if isinstance(payload_val, dict) and "summary" in payload_val:
                 yield _sse({
                     "node": "interrupt",
@@ -312,7 +329,23 @@ async def _stream_arch_resume(
             if current_vals.get("error_message"):
                 logger.warning("arch graph interrupt with error_message: %s", current_vals["error_message"])
             arch = _serialize_diagram(current_vals.get("architecture_diagram"))
-            logger.info("[arch resume] interrupt detected, emitting review event")
+
+            # Persist updated architecture on every review interrupt (user may have requested changes)
+            await architectures_col().update_one(
+                {"session_id": session_id},
+                {
+                    "$set": {
+                        "status": "review_ready",
+                        "architecture_diagram": arch,
+                        "nfr_document": current_vals.get("nfr_document"),
+                        "arch_test_passed": current_vals.get("arch_test_passed"),
+                        "arch_test_violations_count": len(current_vals.get("arch_test_violations") or []),
+                        "updated_at": datetime.now(timezone.utc),
+                    }
+                },
+            )
+            logger.info("[arch resume] interrupt: architecture saved to DB, emitting review event")
+
             if isinstance(payload_val, dict) and "summary" in payload_val:
                 yield _sse({
                     "node": "interrupt",

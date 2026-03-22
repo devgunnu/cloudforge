@@ -118,6 +118,7 @@ interface ForgeState {
   saveFile: (projectId: string, fileId: string) => Promise<boolean>;
   markDirty: (id: string) => void;
   markClean: (id: string) => void;
+  updateNodeConfig: (nodeId: string, config: Record<string, string>) => void;
 }
 
 // ── Stage order ───────────────────────────────────────────────────────────────
@@ -313,6 +314,19 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
       return { dirtyFiles: next };
     }),
 
+  updateNodeConfig: (nodeId, config) =>
+    set((state) => {
+      if (!state.architectureData) return state;
+      return {
+        architectureData: {
+          ...state.architectureData,
+          nodes: state.architectureData.nodes.map((n) =>
+            n.id === nodeId ? { ...n, config: { ...n.config, ...config } } : n
+          ),
+        },
+      };
+    }),
+
   hydrateProject: async (projectId: string) => {
     const headers = authHeaders();
     if (!headers.Authorization) return;
@@ -384,7 +398,8 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
               connections?: Array<Record<string, unknown>>;
             };
             nfr_document?: string;
-            eval_score?: number;
+            arch_test_passed?: boolean;
+            arch_test_violations_count?: number;
           };
 
           const diagram = archData.architecture_diagram;
@@ -450,6 +465,7 @@ export const useForgeStore = create<ForgeState>((set, get) => ({
               lines: fileData.content.split('\n').map((l) => ({ content: l })),
             };
             get().addGeneratedFile(file);
+            get().openFile(file.id);
           }
           set((state) => ({
             stageStatus: { ...state.stageStatus, build: 'done' },
