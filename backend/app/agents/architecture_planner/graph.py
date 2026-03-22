@@ -156,6 +156,7 @@ def create_graph(
     graph_json_path: str | None = None,
     community_summaries_path: str | None = None,
     terraform_mcp_cmd: list[str] | None = None,
+    kuzu_conn=None,
 ):
     """
     Build and compile the full architecture planner graph.
@@ -193,7 +194,8 @@ def create_graph(
     _summaries = community_summaries_path or os.environ.get(
         "CLOUDFORGE_COMMUNITY_SUMMARIES", "community_summaries.json"
     )
-    conn = init_kuzu(_graph_json)
+    # Use the already-open connection if provided (avoids double-lock on the DB file)
+    conn = kuzu_conn if kuzu_conn is not None else init_kuzu(_graph_json)
     kg_traversal = build_kg_subgraph(llm, conn, _summaries)
 
     # Build subgraphs
