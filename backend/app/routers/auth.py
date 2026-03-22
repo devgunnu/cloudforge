@@ -1,9 +1,12 @@
 from datetime import datetime, timedelta, timezone
 from secrets import token_urlsafe
+from urllib.parse import urlencode
 
 import httpx
+import jwt as pyjwt
 from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordBearer
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -27,7 +30,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
-# state -> {"user_id": str, "expires_at": datetime}
+# state -> {"type": "login"|"connect", "user_id"?: str, "expires_at": datetime}
 _github_states: dict[str, dict] = {}
 
 
@@ -137,27 +140,46 @@ async def me(current_user: dict = Depends(get_current_user)) -> UserPublic:
     return _user_to_public(current_user)
 
 
+@router.get("/github/login")
+@limiter.limit("10/minute")
+async def github_login(request: Request) -> RedirectResponse:
+    """Unauthenticated GitHub OAuth login — starts the OAuth flow without requiring a prior account."""
+    state = token_urlsafe(32)
+    _github_states[state] = {
+        "type": "login",
+        "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
+    }
+    params = {
+        "client_id": settings.github_client_id,
+        "redirect_uri": settings.github_redirect_uri,
+        "scope": "user",
+        "state": state,
+    }
+    return RedirectResponse(f"https://github.com/login/oauth/authorize?{urlencode(params)}")
+
+
 @router.get("/github")
 @limiter.limit("10/minute")
 async def github_oauth_init(request: Request, current_user: dict = Depends(get_current_user)) -> dict:
+    """Authenticated GitHub connect — links GitHub to an existing account."""
     state = token_urlsafe(32)
     _github_states[state] = {
+        "type": "connect",
         "user_id": str(current_user["_id"]),
         "expires_at": datetime.now(timezone.utc) + timedelta(minutes=10),
     }
-    auth_url = (
-        f"https://github.com/login/oauth/authorize"
-        f"?client_id={settings.github_client_id}"
-        f"&redirect_uri={settings.github_redirect_uri}"
-        f"&scope=repo"
-        f"&state={state}"
-    )
-    return {"auth_url": auth_url}
+    params = {
+        "client_id": settings.github_client_id,
+        "redirect_uri": settings.github_redirect_uri,
+        "scope": "repo",
+        "state": state,
+    }
+    return {"auth_url": f"https://github.com/login/oauth/authorize?{urlencode(params)}"}
 
 
 @router.get("/github/callback")
 @limiter.limit("10/minute")
-async def github_oauth_callback(request: Request, code: str, state: str) -> dict:
+async def github_oauth_callback(request: Request, code: str, state: str):
     entry = _github_states.get(state)
     if not entry:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired state")
@@ -166,7 +188,7 @@ async def github_oauth_callback(request: Request, code: str, state: str) -> dict
         del _github_states[state]
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="State expired")
 
-    user_id = entry["user_id"]
+    flow = entry.get("type", "connect")
     del _github_states[state]
 
     async with httpx.AsyncClient() as client:
@@ -193,20 +215,64 @@ async def github_oauth_callback(request: Request, code: str, state: str) -> dict
             headers={"Authorization": f"token {github_access_token}"},
         )
         github_user = user_resp.json()
-        login = github_user.get("login")
+        github_login_name = github_user.get("login")
+        github_id = github_user.get("id")
+        avatar_url = github_user.get("avatar_url")
 
-    encrypted_token = encrypt(github_access_token)
     now = datetime.now(timezone.utc)
 
+    if flow == "login":
+        if settings.mongodb_url:
+            # Persist user in MongoDB (encrypt token only when needed)
+            encrypted_token = encrypt(github_access_token)
+            col = users_col()
+            user = await col.find_one({"github_login": github_login_name})
+
+            if not user:
+                result = await col.insert_one(
+                    {
+                        "email": f"gh:{github_id}@noreply.github.com",
+                        "username": github_login_name,
+                        "hashed_password": None,
+                        "github_token_encrypted": encrypted_token,
+                        "github_login": github_login_name,
+                        "avatar_url": avatar_url,
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                )
+                user_id = str(result.inserted_id)
+            else:
+                user_id = str(user["_id"])
+                await col.update_one(
+                    {"_id": user["_id"]},
+                    {"$set": {"github_token_encrypted": encrypted_token, "updated_at": now}},
+                )
+        else:
+            # No MongoDB — use GitHub ID as the stable user identifier
+            user_id = f"gh:{github_id}"
+
+        jwt_payload = {
+            "sub": user_id,
+            "username": github_login_name,
+            "avatar_url": avatar_url,
+            "token_type": "access",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes),
+        }
+        token = pyjwt.encode(jwt_payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
+        return RedirectResponse(f"{settings.frontend_url}/callback?token={token}")
+
+    # connect flow — link GitHub to an existing logged-in account
+    encrypted_token = encrypt(github_access_token)
+    user_id = entry.get("user_id")
     await users_col().update_one(
         {"_id": ObjectId(user_id)},
         {
             "$set": {
                 "github_token_encrypted": encrypted_token,
-                "github_login": login,
+                "github_login": github_login_name,
                 "updated_at": now,
             }
         },
     )
-
-    return {"github_connected": True, "github_login": login}
+    return {"github_connected": True, "github_login": github_login_name}
