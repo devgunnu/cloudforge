@@ -175,8 +175,17 @@ export default function RequirementsPanel() {
     setStageStatus('requirements', 'locked');
   }
 
-  function handleGenerateArchitecture() {
-    if (!isDone) return;
+  async function handleGenerateArchitecture() {
+    if (!isDone || !currentProjectId) return;
+    // Accept the PRD so architecture_sse gate passes
+    try {
+      const { authHeaders } = await import('@/lib/forge-agents');
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      await fetch(`${API_URL}/workflows/prd/v2/accept/${currentProjectId}`, {
+        method: 'POST',
+        headers: authHeaders(),
+      });
+    } catch { /* non-fatal — proceed anyway */ }
     advanceStage();
     router.push(`/app/${id}/architecture`);
   }
