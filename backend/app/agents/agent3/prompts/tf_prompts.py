@@ -6,7 +6,7 @@ from app.agents.agent3.prompts.renderer import render
 
 
 def tf_generation_system(use_modules: bool = False) -> str:
-    return render("tf_generation_system.j2", use_modules=use_modules)
+    return render("tf_generation_system.jinja2", use_modules=use_modules)
 
 
 def tf_generation_user(
@@ -16,7 +16,7 @@ def tf_generation_user(
 ) -> str:
     has_configs = any(s.get("config") for s in services)
     return render(
-        "tf_generation_user.j2",
+        "tf_generation_user.jinja2",
         cloud_provider=cloud_provider,
         services=services,
         connections=connections,
@@ -25,7 +25,7 @@ def tf_generation_user(
 
 
 def tf_fix_system(run_checkov: bool = True) -> str:
-    return render("tf_fix_system.j2", run_checkov=run_checkov)
+    return render("tf_fix_system.jinja2", run_checkov=run_checkov)
 
 
 def tf_fix_user(
@@ -35,7 +35,7 @@ def tf_fix_user(
     tf_files: dict[str, str],
 ) -> str:
     return render(
-        "tf_fix_user.j2",
+        "tf_fix_user.jinja2",
         attempt=attempt,
         max_attempts=max_attempts,
         error_summary=error_summary,

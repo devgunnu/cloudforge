@@ -4,7 +4,7 @@ from app.agents.agent3.prompts.renderer import render
 
 
 def test_generation_system(language: str) -> str:
-    return render("test_generation_system.j2", language=language)
+    return render("test_generation_system.jinja2", language=language)
 
 
 def test_generation_user(
@@ -16,7 +16,7 @@ def test_generation_user(
     ext: str,
 ) -> str:
     return render(
-        "test_generation_user.j2",
+        "test_generation_user.jinja2",
         language=language,
         service_id=service_id,
         service_type=service_type,

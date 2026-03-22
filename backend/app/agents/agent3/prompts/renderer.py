@@ -28,7 +28,7 @@ def render(template_name: str, **kwargs: Any) -> str:
     Render a Jinja2 template from the templates/ directory.
 
     Args:
-        template_name: filename relative to prompts/templates/ (e.g. "tf_generation_user.j2")
+        template_name: filename relative to prompts/templates/ (e.g. "tf_generation_user.jinja2")
         **kwargs: variables injected into the template context
 
     Raises:

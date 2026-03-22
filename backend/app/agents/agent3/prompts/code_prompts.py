@@ -6,7 +6,7 @@ from app.agents.agent3.prompts.renderer import render
 
 
 def code_generation_system(language: str) -> str:
-    return render("code_generation_system.j2", language=language)
+    return render("code_generation_system.jinja2", language=language)
 
 
 def code_generation_user(
@@ -21,7 +21,7 @@ def code_generation_user(
     ext: str,
 ) -> str:
     return render(
-        "code_generation_user.j2",
+        "code_generation_user.jinja2",
         language=language,
         service_id=service_id,
         service_type=service_type,
@@ -35,7 +35,7 @@ def code_generation_user(
 
 
 def code_fix_system(language: str) -> str:
-    return render("code_fix_system.j2", language=language)
+    return render("code_fix_system.jinja2", language=language)
 
 
 def code_fix_user(
@@ -47,7 +47,7 @@ def code_fix_user(
     code: str,
 ) -> str:
     return render(
-        "code_fix_user.j2",
+        "code_fix_user.jinja2",
         attempt=attempt,
         max_attempts=max_attempts,
         language=language,

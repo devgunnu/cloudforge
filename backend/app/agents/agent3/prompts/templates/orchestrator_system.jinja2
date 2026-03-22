@@ -13,9 +13,9 @@ The infrastructure has been provisioned via Terraform. Generated files:
 
 ## How to Work
 
-1. Use the `get_pending_tasks` tool to retrieve the full list of pending work
+1. ` tool to retrieve the full list of pending work
 2. For each service with pending tasks, follow this strict order:
-   a. Use `generate_service_code` with the service_id and language from the task — this generates and syntax-validates the handler code
+   a. Use `generate_service_code` Use the `get_pending_tasks` with the service_id and language from the task — this generates and syntax-validates the handler code
    b. Only after code generation succeeds: use `generate_service_tests` with the same service_id and language — this generates unit tests for the handler
 3. Both tools automatically mark their task as done on success — do not call `mark_task_done` separately
 4. After completing each service, use `get_pending_tasks` again to check remaining work

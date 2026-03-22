@@ -8,7 +8,7 @@ def orchestrator_system(
     tf_file_names: list[str],
 ) -> str:
     return render(
-        "orchestrator_system.j2",
+        "orchestrator_system.jinja2",
         architecture_summary=architecture_summary,
         tf_file_names=tf_file_names,
     )

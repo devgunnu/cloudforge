@@ -10,5 +10,5 @@ _env = Environment(
 
 
 def render_prompt(template_name: str, **kwargs) -> str:
-    """Render a Jinja2 prompt template by name (without .j2 extension)."""
-    return _env.get_template(f"{template_name}.j2").render(**kwargs)
+    """Render a Jinja2 prompt template by name (without .jinja2 extension)."""
+    return _env.get_template(f"{template_name}.jinja2").render(**kwargs)
