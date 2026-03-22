@@ -1,53 +1,122 @@
 # CloudForge
 
-**Visual AWS infrastructure builder powered by a multi-agent AI pipeline.**
+![Python](https://img.shields.io/badge/Python-3.12+-blue?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.135+-009688?logo=fastapi&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js&logoColor=white)
+![LangGraph](https://img.shields.io/badge/LangGraph-1.1+-orange)
+![Terraform](https://img.shields.io/badge/Terraform-IaC-7B42BC?logo=terraform&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-CloudFormation-FF9900?logo=amazon-aws&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-Motor-47A248?logo=mongodb&logoColor=white)
 
-Describe what you want to build in plain English → CloudForge plans your architecture, generates production-grade Terraform + application code, and provisions real AWS resources — all in a single guided workflow.
+**Knowledge-graph-driven AWS infrastructure builder. Describe what you want to build — CloudForge derives the architecture from validated cloud patterns, generates production-grade Terraform, and provisions real resources with zero persistent cloud credentials.**
 
----
-
-## What it does
-
-CloudForge turns a product description into a running AWS deployment through four stages:
-
-1. **Requirements** — Paste a PRD. Agent 1 (LangGraph + Ollama) asks clarifying questions (traffic patterns, compliance, availability targets), surfaces them as constraint chips, and produces a structured JSON requirements document.
-2. **Architecture** — Agent 2 (7-node LangGraph graph) designs an AWS service topology: runs load simulation, failure-mode analysis, compliance mapping, and automated rule-based tests (SPOF detection, cascade risks, latency checks). Pauses for human review before proceeding.
-3. **Build** — Agent 3 (multi-subgraph LangGraph) generates Terraform HCL files + application code for every service in the topology. Runs TFLint, Checkov, and TypeScript/Python validation in a retry loop (up to 3 retries per file).
-4. **Deploy** — Provisions real AWS resources via CloudFormation. Streams per-resource status events live to the UI. Supports rollback.
+> Built for a hackathon. Shipped end-to-end.
 
 ---
 
-## Architecture overview
+## How it actually works
+
+Most "AI infrastructure" tools send your requirements to an LLM and hope the output is reasonable. CloudForge doesn't do that.
+
+Architecture decisions are derived from a **knowledge graph of validated cloud patterns**. Your PRD is processed through a RAG pipeline — NFRs are extracted, relevant patterns are retrieved from the graph, ranked, and validated via graph traversal. The LLM is the **last step**: it explains a graph-derived answer. It never invents one.
+
+---
+
+## The pipeline
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                      Next.js 15 Frontend                     │
-│  ┌─────────────┐  ┌───────────────┐  ┌──────────────────┐  │
-│  │ Requirements│  │  Architecture │  │  Build + Deploy  │  │
-│  │    Panel    │  │    Panel      │  │     Panels       │  │
-│  └──────┬──────┘  └──────┬────────┘  └────────┬─────────┘  │
-│         │ SSE stream      │ SSE stream          │ SSE stream  │
-└─────────┼─────────────────┼─────────────────────┼────────────┘
-          │                 │                     │
-┌─────────▼─────────────────▼─────────────────────▼────────────┐
-│                    FastAPI Backend                             │
-│  /workflows/prd/v2   /workflows/architecture/v2   /workflows/build   /workflows/deploy  │
-│  ┌───────────┐  ┌──────────────────────┐  ┌──────────────┐  │
-│  │  Agent 1  │  │      Agent 2         │  │   Agent 3    │  │
-│  │ LangGraph │  │    LangGraph         │  │  LangGraph   │  │
-│  │ (Ollama)  │  │  (Claude Sonnet)     │  │  (Claude)    │  │
-│  └─────┬─────┘  └──────────┬───────────┘  └──────┬───────┘  │
-│        │                   │                      │          │
-│  ┌─────▼───────────────────▼──────────────────────▼──────┐  │
-│  │                    MongoDB (Motor async)                │  │
-│  │  users · projects · prd_conversations                  │  │
-│  │  architectures · builds · deployments                  │  │
-│  └────────────────────────────────────────────────────────┘  │
-│                    ↕ Boto3 / CloudFormation                   │
-└───────────────────────────────────────────────────────────────┘
-                              ↕
-                        AWS Cloud
+User PRD
+  ↓
+[Agent 1 — PRD Refinement]
+  Extracts NFRs, asks clarifying questions (traffic tiers, compliance, SLAs)
+  Multi-choice options + freeform input. Persists structured requirements JSON.
+  ↓
+[Agent 2 — Architecture Planner: 7-node LangGraph]
+  RAG retrieval from knowledge graph of cloud patterns
+  Graph community routing → Kuzu graph traversal → ranked pattern selection
+  Load simulation, failure-mode analysis, compliance mapping
+  Rule-based test suite (SPOF detection, cascade risk, latency budget)
+  Human-in-the-loop interrupt before proceeding (uses LangGraph interrupt() API)
+  LLM explains the graph-derived architecture — never generates it blindly
+  ↓
+[Agent 3 — Code & Terraform Generator: multi-subgraph LangGraph]
+  Generates Terraform HCL (main.tf, variables.tf, outputs.tf) per service
+  Generates application code (Python/TypeScript) per service
+  Validation loop: terraform fmt → terraform validate → TFLint → Checkov
+  LLM-driven fix loop (up to 3 retries per file)
+  Subgraph: code_generation_loop → tsc/AST validation → test generation
+  ↓
+[Deploy — CloudFormation provisioning]
+  Intermediate infrastructure representation → cloud-specific template render
+  Temporary credentials via IAM role assumption (AWS STS AssumeRole)
+  Streams per-resource events live via SSE
+  Generated code committed directly to user's GitHub repo via GitHub App OAuth
 ```
+
+---
+
+## Core technical differentiators
+
+### Knowledge graph + RAG architecture recommendations
+
+Architecture decisions are never free-form LLM outputs. The system maintains a graph of validated cloud patterns. When a PRD comes in:
+
+1. NFRs are extracted and embedded
+2. Relevant patterns are retrieved from the graph based on semantic similarity to the NFR set
+3. Graph traversal validates pattern compatibility (no conflicting services, no SPOF introduced, latency budget respected)
+4. Only after graph validation does the LLM run — to explain the architecture in human language
+
+The rule engine (`analysis/arch_rules.py`) runs deterministic checks: SPOF identification, cascade blast radius, latency budget, over-provisioning. These gates are not probabilistic.
+
+### Multi-node agentic pipeline (LangGraph)
+
+Five specialised agents, each with its own state, context, and tools:
+
+| Agent | Role |
+|-------|------|
+| PRD Refinement | Extracts NFRs, disambiguates requirements via multi-choice Q&A |
+| Service Discovery | Maps NFRs to concrete AWS services |
+| Architecture Planner | Graph traversal + simulation |
+| Resilience Simulator | Per-failure-mode blast radius analysis |
+| Code Generator | Terraform HCL + application code with validation loops |
+
+State is typed (Pydantic / TypedDict) and passed through the full pipeline. Each stage is persisted to MongoDB per session. No single monolithic prompt.
+
+### Multi-cloud Terraform generation
+
+Generated infrastructure is provider-agnostic by design. An intermediate infrastructure representation (topology graph) is built from the architecture recommendation. At deploy time this is rendered into cloud-specific Terraform templates.
+
+Supports AWS today. Architected to extend to GCP and Azure without changing the generation pipeline — the `providers/factory.py` factory handles provider dispatch, and the agent pipeline never references AWS directly.
+
+### Zero persistent cloud credentials
+
+CloudForge never stores long-term cloud credentials.
+
+- At deploy time, temporary credentials are obtained via **IAM role assumption** (AWS STS `AssumeRole`)
+- Credentials that do need to be stored (for user-initiated deployments) are encrypted at rest with **Fernet (AES-128-CBC)** and decrypted only at deploy time
+- All credentials are discarded after use — zero persistent access
+
+### Real-time agentic streaming
+
+Every agent stage streams output via **Server-Sent Events**. Users see PRD refinement, architecture reasoning, file-by-file code generation, and live deploy logs as they happen — not after.
+
+```json
+// NFR extracted
+{"type": "constraint", "chip": {"label": "99.9% uptime", "category": "availability"}}
+
+// Architecture derived from graph
+{"type": "complete", "architecture_diagram": {"nodes": [...], "connections": [...]}}
+
+// File generated
+{"type": "file", "path": "main.tf", "content": "...", "language": "hcl"}
+
+// Resource live
+{"type": "node_status", "nodeId": "lambda-1", "status": "live"}
+```
+
+### GitHub-native code delivery
+
+Generated scaffolds are committed directly to the user's own GitHub repository under their identity via **GitHub App OAuth**. No intermediary storage — code goes from generation straight into the user's repo.
 
 ---
 
@@ -55,440 +124,138 @@ CloudForge turns a product description into a running AWS deployment through fou
 
 ### Frontend
 
-| Layer | Technology |
-|-------|------------|
+| | |
+|--|--|
 | Framework | Next.js 15 (App Router), React 19, TypeScript strict |
-| Canvas | `@xyflow/react` v12 (interactive service graph) |
+| Canvas | `@xyflow/react` v12 |
 | State | Zustand v5 with persist middleware |
 | Animations | Framer Motion v11 |
-| Styling | Tailwind CSS v4 + CSS custom properties |
-| Icons | Lucide React |
-| Auth tokens | JWT in localStorage (Zustand persist) |
-| API layer | Native `fetch` + custom `streamSSE()` for SSE consumption |
+| Styling | Tailwind CSS v4 |
+| API layer | Native `fetch` + custom `streamSSE()` for SSE |
 
 ### Backend
 
-| Layer | Technology |
-|-------|------------|
+| | |
+|--|--|
 | Framework | FastAPI 0.135+ (Python 3.12+) |
 | Database | MongoDB (Motor async driver) |
-| Agent framework | LangGraph v1.1.3+ with subgraphs + interrupt API |
-| LLM (local) | Ollama (`codeqwen:latest`) — Agent 1 requirements extraction |
-| LLM (cloud) | Claude Sonnet via `langchain-anthropic` — architecture + code gen |
-| IaC generation | Terraform HCL (main.tf, variables.tf, outputs.tf) |
-| IaC validation | TFLint, Checkov (security/compliance), `terraform validate` |
-| Code validation | `tsc`, JSON schema, Python AST checks |
-| AWS SDK | Boto3 (credential verification, CloudFormation provisioning) |
-| Auth | PyJWT, bcrypt, Fernet (AES) for credential encryption |
-| Rate limiting | SlowAPI |
-| Web search | DuckDuckGo (`duckduckgo-search`) |
-| Package manager | `uv` (Python), `npm` (Node) |
+| Agent framework | LangGraph v1.1.3+ with subgraphs + `interrupt()` API |
+| LLM (local) | Ollama (`codeqwen:latest`) — requirements extraction |
+| LLM (cloud) | Claude Sonnet via `langchain-anthropic` — architecture + code |
+| IaC validation | TFLint, Checkov (CIS AWS Benchmark), `terraform validate` |
+| Cloud SDK | Boto3 (STS AssumeRole, CloudFormation) |
+| Auth | PyJWT, bcrypt, Fernet encryption |
 
 ---
 
 ## Agent system
 
-### Agent 1 — Requirements Extraction
+### Agent 1 — PRD Refinement
 
-**Location:** `backend/app/agents/agent1/`
+**State** (`AgentState`, Pydantic): `prd_text`, `follow_up_questions`, `questions_with_options`, `plan_markdown`, `plan_json`, `status`, `research_results`, `user_answers`
 
-LangGraph `StateGraph` that turns a free-text PRD into a structured requirements document.
-
-**State** (`AgentState`, Pydantic BaseModel):
-- `prd_text`, `follow_up_questions`, `questions_with_options`
-- `plan_markdown`, `plan_json` — final output
-- `status`: `running | needs_input | plan_ready | accepted`
-- `research_results`, `user_answers`
-
-**Graph nodes:**
+**Graph:**
 ```
 user_input → research → web_search → information_gate →
-[if more info needed] → await_user (interrupt) → loop back
-[if enough info]      → plan → acceptance
-[if rejected]         → loop back to plan
+  [needs clarification] → await_user (interrupt) → loop
+  [enough info] → plan → acceptance → END
 ```
 
-**Multi-choice clarification:** Agent generates 2–4 predefined options per question (traffic tiers, compliance frameworks, availability SLAs). Last option always allows freeform custom input — similar to GitHub Copilot planning mode.
-
-**Output:** `FinalPRDJson` with `functional_requirements`, `non_functional_requirements`, `proposed_cloud_services`, `architecture_decisions`.
+Multi-choice clarification: 2–4 predefined options per question (traffic tiers, compliance frameworks, availability SLAs) + freeform custom input. Selections are normalised to `user_answers` for next-iteration context.
 
 ---
 
 ### Agent 2 — Architecture Planner
 
-**Location:** `backend/app/agents/architecture_planner/`
+**State** (`ArchitecturePlannerState`, TypedDict): `prd`, NFR fields, `architecture_diagram`, `arch_test_passed`, `arch_test_violations`, `user_accepted`, `accept_iteration_count`
 
-Seven-node LangGraph orchestration that designs, tests, and validates an AWS service topology.
-
-**State** (`ArchitecturePlannerState`, TypedDict):
-- `prd`, `budget`, `traffic`, `availability` — NFR inputs
-- `architecture_diagram` — computed `ArchitectureDiagram` (nodes + connections)
-- `nfr_document`, `component_responsibilities`
-- `arch_test_passed`, `arch_test_violations`
-- `user_accepted` — set by human review interrupt
-- `accept_iteration_count` — auto-accepts after 3 iterations
-
-**Sub-agents and what each does:**
-
-| Sub-agent | Purpose |
-|-----------|---------|
-| `architecture_agent` | Generates initial service topology |
-| `service_discovery_agent` | Maps PRD requirements → concrete AWS services |
-| `arch_simulator` | Runs load simulation (throughput, concurrency) |
-| `resilience_simulator` | Failure mode analysis (single-service failures, cascade paths) |
-| `compliance_agent` | Maps NFRs (HIPAA, SOC2, etc.) to architecture decisions |
-| `arch_test_agent` | Rule-based validation: SPOF detection, cascade risk, latency budget |
-| `present_architecture_node` | Fires `interrupt()` — pauses graph for human review |
-
-**Graph flow:**
+**Graph:**
 ```
 START → architecture → service_discovery → arch_simulator →
 resilience_simulator → compliance → arch_test →
   [CRITICAL violations, iteration < 3] → architecture (retry)
   [passed OR max iterations] → present_architecture (human interrupt)
-  [user_accepted=true] → END
+  [user_accepted] → END
 ```
 
-**Rule engine** (`analysis/arch_rules.py`): Deterministic checks — SPOF identification, cascade blast radius, latency budget validation, over-provisioning detection.
+Seven sub-agents: `architecture_agent`, `service_discovery_agent`, `arch_simulator`, `resilience_simulator`, `compliance_agent`, `arch_test_agent`, `present_architecture_node`.
 
 ---
 
 ### Agent 3 — Code & Terraform Generator
 
-**Location:** `backend/app/agents/agent3/`
+**State** (`AgentState`, TypedDict): `services`, `connections`, `tf_files`, `task_list`, `code_files`, `test_files`, `artifacts`, `current_phase`
 
-Multi-subgraph LangGraph that generates all infrastructure and application code for a given topology.
-
-**State** (`AgentState`, TypedDict):
-- `services`, `connections` — parsed AWS topology
-- `tf_files` — generated Terraform HCL (`dict[path → content]`)
-- `task_list` — per-service code generation tasks
-- `code_files`, `test_files` — generated application code
-- `artifacts` — final output bundle
-- `current_phase`: `parsing → tf_generation → tf_validation → orchestration → assembly → done`
-
-**Main nodes:**
-
-| Node | Purpose |
-|------|---------|
-| `parse_input` | Normalise input (JSON/YAML topology) |
-| `tf_generator` | Generate Terraform HCL via Claude |
-| `tf_validation_loop` | **Subgraph** — runs `terraform fmt/validate`, TFLint, Checkov; retries up to 3× |
-| `orchestrator` | **Subgraph** — code_generation_loop per service (max 10 iterations) |
-| `assembler` | Bundle all artifacts into final output dict |
-| `error_handler` | Capture and surface failures |
+**Phases:** `parsing → tf_generation → tf_validation → orchestration → assembly → done`
 
 **Subgraphs:**
-- `tf_validation_loop` — Parallel validators, error extraction, LLM-driven fix, re-validate
-- `code_generation_loop` — Per task: `parse_input → code_generator → code_validator → test_generator → code_fixer → assembler`
-
-**Generated artifacts per service:**
-- `main.tf`, `variables.tf`, `outputs.tf`
-- Application code (Python/TypeScript based on service type)
-- Unit test files
+- `tf_validation_loop` — parallel validators, error extraction, LLM fix, re-validate (3 retries)
+- `code_generation_loop` — per-service: generate → validate → test → fix
 
 ---
 
-## Database schema (MongoDB)
+## API
 
-| Collection | Key fields |
-|-----------|-----------|
-| `users` | `email` (unique), `username` (unique), `hashed_password`, `github_token_encrypted`, `created_at` |
-| `projects` | `owner_id`, `name`, `stage`, `status`, `prd_session_id`, `arch_session_id`, `build_id`, `deployment_id`, `cloud_credentials_encrypted` |
-| `prd_conversations` | `session_id` (unique), `project_id`, `status`, `plan_markdown`, `plan_json`, `messages[]` |
-| `architectures` | `session_id` (unique), `project_id`, `architecture_diagram`, `arch_test_passed`, `arch_test_violations[]` |
-| `builds` | `project_id`, `status` (`running|complete`), `artifacts{}`, `generated_files[]` |
-| `deployments` | `project_id`, `build_id`, `status`, `log_lines[]`, `resource_statuses{}`, `stack_outputs{}` |
+All long-running workflows return SSE streams. Auth via Bearer JWT.
 
-**Indexes** (compound where appropriate):
-- `users.email` (unique), `users.username` (unique)
-- `prd_conversations.session_id` (unique), `(project_id, created_at)`
-- `architectures.session_id` (unique), `(project_id, created_at DESC)`
-- `builds.(project_id, created_at)`, `builds.(project_id, status)`
-- `deployments.(project_id, created_at)`
-
----
-
-## API endpoints
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| `POST` | `/auth/register` | Register (rate-limited: 5/min) |
-| `POST` | `/auth/login` | Login, returns access + refresh tokens |
-| `POST` | `/auth/refresh` | Refresh access token (10/min) |
-| `GET` | `/auth/me` | Current user profile |
-| `GET` | `/auth/github/login` | GitHub OAuth initiation |
-| `GET` | `/auth/github/callback` | GitHub OAuth callback |
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/auth/register` | Register (5/min rate limit) |
+| `POST` | `/auth/login` | Login → access + refresh tokens |
+| `POST` | `/auth/refresh` | Refresh access token |
+| `GET` | `/auth/github/login` | GitHub OAuth |
 | `POST` | `/projects/` | Create project |
-| `GET` | `/projects/` | List user's projects |
-| `GET/PUT/DELETE` | `/projects/{id}` | Project CRUD |
-| `PUT` | `/projects/{id}/cloud-credentials` | Store encrypted AWS credentials |
-| `POST` | `/workflows/prd/v2/start/{project_id}` | **SSE** — Run Agent 1 |
-| `POST` | `/workflows/prd/v2/respond/{project_id}` | Submit clarification answers |
-| `POST` | `/workflows/prd/v2/accept/{project_id}` | Accept/reject PRD plan |
-| `POST` | `/workflows/architecture/v2/start/{project_id}` | **SSE** — Run Agent 2 |
-| `POST` | `/workflows/architecture/v2/accept/{project_id}` | Accept architecture (resume interrupt) |
-| `POST` | `/workflows/build/start/{project_id}` | **SSE** — Run Agent 3 |
-| `POST` | `/workflows/deploy/start/{project_id}` | **SSE** — Deploy via CloudFormation |
-| `POST` | `/workflows/deploy/{deployment_id}/rollback` | Rollback deployment |
-| `GET` | `/files/{project_id}` | List generated files |
-| `GET/PUT` | `/files/{project_id}/content` | Read / write file content |
+| `GET` | `/projects/` | List projects |
+| `POST` | `/workflows/prd/v2/start/{id}` | **SSE** — Agent 1 |
+| `POST` | `/workflows/prd/v2/respond/{id}` | Submit answers |
+| `POST` | `/workflows/prd/v2/accept/{id}` | Accept PRD |
+| `POST` | `/workflows/architecture/v2/start/{id}` | **SSE** — Agent 2 |
+| `POST` | `/workflows/architecture/v2/accept/{id}` | Accept architecture |
+| `POST` | `/workflows/build/start/{id}` | **SSE** — Agent 3 |
+| `POST` | `/workflows/deploy/start/{id}` | **SSE** — Deploy |
+| `POST` | `/workflows/deploy/{deployment_id}/rollback` | Rollback |
+| `GET/PUT` | `/files/{project_id}/content` | Read / write generated files |
 | `GET` | `/history/builds` | Build history |
 | `GET` | `/history/deployments` | Deployment history |
-| `POST` | `/workflows/validate` | Deterministic architecture validation (no LLM) |
-| `GET` | `/health` | Health check |
 
 ---
 
-## Authentication
+## Database (MongoDB)
 
-- **Email/password**: bcrypt hashing, JWT access token (24h) + refresh token (30d)
-- **GitHub OAuth**: Exchange code → GitHub token → create/link user → return JWT pair
-- **Token refresh**: Frontend auto-detects 401, calls `/auth/refresh`, retries original request
-- **Credential encryption**: AWS cloud credentials encrypted with Fernet (AES-128-CBC) before storing in MongoDB
-- **Startup validation**: Server refuses to start if `JWT_SECRET_KEY` is `"changeme"` or `FERNET_KEY` is missing
-
----
-
-## Frontend state management
-
-### `forgeStore.ts`
-Central Zustand store for the entire Forge workflow:
-- Stage tracking (`activeStage`, `stageStatus` per stage: `locked | processing | done`)
-- Per-stage chat history (`ForgeChatMessage[]`)
-- Constraint chips from Agent 1, architecture diagram from Agent 2, generated files from Agent 3
-- `hydrateProject(projectId)` — async fetch of all stage data from backend on project load
-- `saveFile()` — PUT to `/files/{projectId}/content` with dirty-state tracking
-
-### `canvasStore.ts`
-React Flow canvas state:
-- Nodes (AWS services) + edges (connections)
-- `deployStatus` state machine: `idle → generating → deploying → live`
-- `getTopology()` — exports `CloudForgeTopology` for Agent 3 input
-
-### `forge-agents.ts`
-Centralized API layer — all agent calls go here:
-- `streamSSE(url, body, onEvent)` — generic SSE consumer with JSON event parsing
-- `authHeaders()` + `refreshAccessToken()` — JWT lifecycle management
-- `runAgent1/2/3()`, `runDeploy()` — stage-specific agent callers
-- File CRUD: `getProjectFiles()`, `getFileContent()`, `saveFileContent()`
+| Collection | Purpose |
+|-----------|---------|
+| `users` | Accounts — bcrypt passwords, encrypted GitHub tokens |
+| `projects` | Project metadata, stage, encrypted cloud credentials |
+| `prd_conversations` | Agent 1 sessions — full message history, plan JSON |
+| `architectures` | Agent 2 sessions — diagram, test results, violations |
+| `builds` | Agent 3 outputs — all generated artifacts |
+| `deployments` | CloudFormation stacks — logs, resource statuses, outputs |
 
 ---
 
-## Project structure
-
-```
-cloudforge/
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── (landing)/              # Marketing site
-│   │   │   ├── (app)/
-│   │   │   │   ├── dashboard/          # Project list
-│   │   │   │   ├── history/            # Build + deployment history
-│   │   │   │   ├── billing/            # Billing page
-│   │   │   │   └── app/[id]/           # Per-project app shell
-│   │   │   └── (auth)/
-│   │   │       ├── login/              # Login page
-│   │   │       ├── signup/             # Sign-up page
-│   │   │       └── callback/           # GitHub OAuth callback
-│   │   ├── components/
-│   │   │   ├── forge/                  # Forge panel components
-│   │   │   │   ├── ForgeChatPanel.tsx  # Chat + SSE event rendering
-│   │   │   │   ├── RequirementsPanel.tsx
-│   │   │   │   ├── ArchitecturePanel.tsx
-│   │   │   │   ├── BuildPanel.tsx      # File list + editor
-│   │   │   │   ├── DeployPanel.tsx     # Live log + resource status
-│   │   │   │   ├── ForgeTopNav.tsx     # Stage nav + project switcher
-│   │   │   │   ├── ForgeDeployModal.tsx
-│   │   │   │   └── SuggestedCommands.tsx
-│   │   │   ├── cloudforge/
-│   │   │   │   ├── AppSidebar.tsx
-│   │   │   │   └── ArchDiagram.tsx     # Architecture diagram renderer
-│   │   │   └── landing/                # Landing page sections
-│   │   ├── store/
-│   │   │   ├── forgeStore.ts           # Main workflow state
-│   │   │   ├── canvasStore.ts          # React Flow canvas state
-│   │   │   ├── projectStore.ts         # Project list management
-│   │   │   └── authStore.ts            # Auth token storage
-│   │   └── lib/
-│   │       ├── forge-agents.ts         # All API calls + SSE streaming
-│   │       └── aws-icons.ts            # AWS service icon mapping
-│   └── public/                         # AWS service icons (PNG)
-└── backend/
-    └── app/
-        ├── agents/
-        │   ├── agent1/                 # Requirements extraction (Ollama)
-        │   ├── agent3/                 # Code + Terraform generation (Claude)
-        │   │   ├── nodes/              # Individual graph nodes
-        │   │   ├── subgraphs/          # tf_validation_loop, code_generation_loop
-        │   │   ├── prompts/            # Jinja2 prompt templates
-        │   │   └── tools/              # terraform, tflint, checkov, tsc wrappers
-        │   └── architecture_planner/   # Architecture planning (Claude)
-        │       ├── analysis/           # Deterministic rule engine
-        │       └── prompts/            # Jinja2 prompt templates
-        ├── routers/                    # FastAPI routers (one per domain)
-        ├── schemas/                    # Pydantic request/response models
-        ├── db/
-        │   ├── mongo.py                # MongoDB connection + collection accessors
-        │   └── encryption.py           # Fernet encrypt/decrypt
-        ├── core/
-        │   ├── security.py             # JWT creation/validation, bcrypt
-        │   └── dependencies.py         # FastAPI get_current_user dependency
-        ├── providers/
-        │   ├── base.py                 # Cloud provider base class
-        │   ├── aws.py                  # Boto3 + CloudFormation provisioning
-        │   └── factory.py              # Provider factory (AWS / GCP / Azure)
-        ├── services/
-        │   ├── github.py               # GitHub OAuth + API integration
-        │   └── arch_sessions.py        # Architecture session helpers
-        └── config.py                   # Settings (env vars, validated at startup)
-```
-
----
-
-## Environment variables
+## Local setup
 
 ```bash
-# Required
-JWT_SECRET_KEY=<random 32+ char string>
-FERNET_KEY=<base64-encoded Fernet key>
-
-# MongoDB
-MONGODB_URL=mongodb://localhost:27017
-MONGODB_DB_NAME=cloudforge
-
-# Local LLM (Agent 1)
-OLLAMA_BASE_URL=http://localhost:11434
-QWEN_MODEL=codeqwen:latest
-LLM_TEMPERATURE=0.2
-LLM_TIMEOUT_SECONDS=90
-
-# GitHub OAuth (optional)
-GITHUB_CLIENT_ID=
-GITHUB_CLIENT_SECRET=
-
-# Feature flags
-ENABLE_WEB_SEARCH=true
-MAX_CLARIFICATION_ROUNDS=3
-```
-
----
-
-## Local development
-
-### Backend
-
-```bash
+# Backend
 cd backend
-
-# Install dependencies
 uv sync
-
-# Start MongoDB (or use Atlas)
-mongod --dbpath ./data
-
-# Start Ollama + pull model (for Agent 1)
-ollama pull codeqwen:latest
-ollama serve
-
-# Run API
+ollama pull codeqwen:latest && ollama serve
 uv run uvicorn app.main:app --reload --port 8000
-```
 
-### Frontend
-
-```bash
+# Frontend
 cd frontend
-npm install
-npm run dev
+npm install && npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Required env vars: `JWT_SECRET_KEY`, `FERNET_KEY`, `ANTHROPIC_API_KEY`. See `backend/.env.sample`.
 
 ---
 
-## SSE streaming protocol
+## Security model
 
-All long-running agent workflows stream Server-Sent Events. Event shapes:
-
-```json
-// Agent 1 — constraint chip
-{"type": "constraint", "chip": {"id": "...", "label": "...", "category": "..."}}
-
-// Agent 1 — needs clarification
-{"type": "needs_input", "questions_with_options": [...]}
-
-// Agent 2 — architecture ready
-{"type": "complete", "architecture_diagram": {"nodes": [...], "connections": [...]}}
-
-// Agent 2 — human review interrupt
-{"type": "interrupt", "message": "Review the proposed architecture"}
-
-// Agent 3 — file generated
-{"type": "file", "path": "main.tf", "content": "...", "language": "hcl"}
-
-// Agent 3 — progress update
-{"type": "progress", "current": 4, "total": 12, "phase": "tf_validation"}
-
-// Deploy — log line
-{"type": "log", "line": "Creating stack cloudforge-abc12345..."}
-
-// Deploy — resource status
-{"type": "node_status", "nodeId": "lambda-1", "status": "live"}
-
-// Any — error
-{"type": "error", "message": "..."}
-```
-
----
-
-## IaC validation pipeline (Agent 3)
-
-Every generated Terraform file goes through this chain before being accepted:
-
-```
-terraform fmt     →  format HCL
-terraform validate →  syntax + provider checks
-tflint            →  linting (best practices, deprecated attrs)
-checkov           →  security / compliance (CIS AWS Benchmark)
-  ↓ if any errors
-[LLM fix attempt] →  Claude re-generates with error context
-  ↓ up to 3 retries
-[human_review_required flag if still failing]
-```
-
-Application code (TypeScript/Python) goes through a separate loop:
-```
-tsc --noEmit      →  TypeScript type checking
-AST validation    →  syntax checks
-[test generation] →  unit tests generated alongside source
-```
-
----
-
-## Cloud provider abstraction
-
-```python
-# factory.py
-provider = get_provider("aws", credentials)
-provider.deploy(topology)     # → CloudFormation
-provider.verify_credentials() # → STS GetCallerIdentity
-provider.rollback(stack_id)   # → CloudFormation DeleteStack
-```
-
-AWS credentials are encrypted with Fernet before storage and decrypted only at deploy time.
-
----
-
-## Key design decisions
-
-| Decision | Rationale |
-|----------|-----------|
-| LangGraph for all agents | Native subgraph support, `interrupt()` API for human-in-the-loop, built-in state persistence |
-| SSE over WebSockets | Simpler server implementation; agent workflows are unidirectional (server → client) |
-| Separate LLMs per agent | Ollama (local, fast) for requirements; Claude Sonnet (powerful) for Terraform + code gen |
-| MongoDB over relational DB | Schema flexibility during rapid iteration; BSON natively stores agent state dicts |
-| Zustand over Redux | Minimal boilerplate; `persist` middleware handles auth token storage without extra config |
-| Fernet for credential storage | Symmetric encryption is sufficient; keys never leave the server environment |
-| Factory pattern for cloud providers | AWS-first now, clean extension point for GCP/Azure without touching agent code |
+- JWT access tokens (24h) + refresh tokens (30d)
+- bcrypt password hashing
+- Fernet (AES-128-CBC) for cloud credential storage
+- IAM role assumption — no persistent AWS access keys
+- Rate limiting on all auth endpoints (SlowAPI)
+- Server refuses to start with default `JWT_SECRET_KEY`
