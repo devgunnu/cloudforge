@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from bson import ObjectId
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.agents.agent1 import run_until_interrupt
@@ -123,6 +123,7 @@ async def _persist_prd(
 async def start_prd(
     project_id: str,
     payload: PrdStartRequest,
+    request: Request,
     user: dict = Depends(get_current_user),
 ) -> StreamingResponse:
     # Gate: validate project
@@ -178,7 +179,11 @@ async def start_prd(
 
     async def _stream():
         try:
+            if await request.is_disconnected():
+                return
             result = await _run_agent1(initial_state)
+            if await request.is_disconnected():
+                return
             session_store.save(result.as_graph_state())
 
             chips = _parse_constraints(result)
@@ -195,7 +200,7 @@ async def start_prd(
 
         except Exception as exc:
             logger.exception("Error in start_prd SSE stream")
-            yield _sse({"type": "error", "message": str(exc)})
+            yield _sse({"type": "error", "message": "An internal error occurred. Please try again."})
 
         yield "data: [DONE]\n\n"
 
@@ -214,6 +219,7 @@ async def start_prd(
 async def respond_prd(
     project_id: str,
     payload: PrdRespondRequest,
+    request: Request,
     user: dict = Depends(get_current_user),
 ) -> StreamingResponse:
     # Gate: validate project
@@ -258,7 +264,11 @@ async def respond_prd(
 
     async def _stream():
         try:
+            if await request.is_disconnected():
+                return
             result = await _run_agent1(state)
+            if await request.is_disconnected():
+                return
             session_store.save(result.as_graph_state())
 
             chips = _parse_constraints(result)
@@ -275,7 +285,7 @@ async def respond_prd(
 
         except Exception as exc:
             logger.exception("Error in respond_prd SSE stream")
-            yield _sse({"type": "error", "message": str(exc)})
+            yield _sse({"type": "error", "message": "An internal error occurred. Please try again."})
 
         yield "data: [DONE]\n\n"
 
