@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, X } from 'lucide-react';
 import { useForgeStore } from '@/store/forgeStore';
@@ -10,12 +10,14 @@ export default function ForgeDeployModal() {
   const { deployModalOpen, setDeployModalOpen, projectName, advanceStage, setStageStatus } =
     useForgeStore();
   const router = useRouter();
+  const params = useParams();
+  const id = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
 
   function handleDeploy() {
     setDeployModalOpen(false);
     setStageStatus('deploy', 'processing');
     advanceStage();
-    router.push('/app/deploy');
+    router.push(`/app/${id}/deploy`);
   }
 
   function handleCancel() {

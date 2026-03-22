@@ -6,7 +6,8 @@
       "Bash(find /c/Users/gunbi/OneDrive/Desktop/cloudforge/backend -name .env* -o -name *.env)",
       "Bash(cat:*)",
       "Bash(npx tsc:*)",
-      "Bash(xargs grep:*)"
+      "Bash(xargs grep:*)",
+      "Bash(ls:*)"
     ]
   }
 }

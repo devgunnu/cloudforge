@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useForgeStore } from '@/store/forgeStore';
 import ArchDiagram, { convertForgeNodes, convertForgeEdges } from '@/components/cloudforge/ArchDiagram';
@@ -321,6 +321,8 @@ function NodeInspector({ node, onClose }: NodeInspectorProps) {
 
 export default function ArchitecturePanel() {
   const router = useRouter();
+  const params = useParams();
+  const id = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
   const {
     constraints,
     architectureData,
@@ -397,7 +399,7 @@ export default function ArchitecturePanel() {
 
   function handleContinueToBuild() {
     advanceStage();
-    router.push('/app/build');
+    router.push(`/app/${id}/build`);
   }
 
   const displayNodes = architectureData?.nodes ?? [];

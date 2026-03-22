@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Lock } from 'lucide-react';
 import {
@@ -15,12 +15,14 @@ import {
 function StageBreadcrumb() {
   const { activeStage, stageStatus, navigateToStage } = useForgeStore();
   const router = useRouter();
+  const params = useParams();
+  const projectId = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
 
   function handleStageClick(stage: ForgeStage) {
     const isDev = process.env.NODE_ENV === 'development';
     if (!isDev && stageStatus[stage] === 'locked') return;
     navigateToStage(stage);
-    router.push(`/app/${stage}`);
+    router.push(`/app/${projectId}/${stage}`);
   }
 
   return (
