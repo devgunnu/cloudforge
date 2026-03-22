@@ -4,7 +4,10 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Github, Mail, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { Github, Eye, EyeOff, ArrowRight } from 'lucide-react';
+import { useAuthStore } from '@/store/authStore';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -160,18 +163,36 @@ function FormInput({
 
 export default function LoginPage() {
   const router = useRouter();
+  const setAuth = useAuthStore((s) => s.setAuth);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    // Mock: redirect to dashboard after short delay
-    setTimeout(() => {
+    setError(null);
+    try {
+      const resp = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({}));
+        setError((body as { detail?: string }).detail || 'Invalid email or password');
+        return;
+      }
+      const data = await resp.json();
+      setAuth(data.access_token, data.refresh_token, data.user);
       router.push('/dashboard');
-    }, 800);
+    } catch {
+      setError('Unable to reach the server. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   function handleOAuth() {
@@ -276,6 +297,25 @@ export default function LoginPage() {
         </div>
 
         <Divider />
+
+        {/* Error message */}
+        {error && (
+          <div
+            role="alert"
+            style={{
+              marginBottom: '14px',
+              padding: '9px 12px',
+              background: 'rgba(248,113,113,0.08)',
+              border: '0.5px solid rgba(248,113,113,0.3)',
+              borderRadius: '8px',
+              fontFamily: 'var(--font-inter), system-ui, sans-serif',
+              fontSize: '12px',
+              color: '#f87171',
+            }}
+          >
+            {error}
+          </div>
+        )}
 
         {/* Email form */}
         <form onSubmit={handleSubmit} noValidate>
@@ -413,31 +453,6 @@ export default function LoginPage() {
         .
       </p>
 
-      {/* Mock email notice */}
-      <div
-        style={{
-          marginTop: '16px',
-          background: 'var(--lp-accent-dim)',
-          border: '0.5px solid rgba(45,212,191,0.2)',
-          borderRadius: '8px',
-          padding: '8px 12px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-        }}
-        role="note"
-      >
-        <Mail size={12} aria-hidden="true" style={{ color: 'var(--lp-accent)', flexShrink: 0 }} />
-        <span
-          style={{
-            fontFamily: 'var(--font-inter), system-ui, sans-serif',
-            fontSize: '11px',
-            color: 'var(--lp-text-secondary)',
-          }}
-        >
-          Mock UI — any credentials will redirect to the dashboard.
-        </span>
-      </div>
     </motion.div>
   );
 }

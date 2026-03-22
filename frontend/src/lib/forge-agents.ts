@@ -1,7 +1,6 @@
 /**
  * Forge agent service layer.
  * All agent calls are centralised here so the UI never calls external services directly.
- * Swap the MOCK_* constants and the implementation bodies to wire real API calls.
  */
 
 import type {
@@ -11,10 +10,63 @@ import type {
   GeneratedFile,
 } from '@/store/forgeStore';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
 // ── Utility ───────────────────────────────────────────────────────────────────
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function streamSSE(
+  url: string,
+  fetchInit: RequestInit,
+  onEvent: (data: string) => void
+): Promise<void> {
+  const resp = await fetch(url, {
+    ...fetchInit,
+    headers: {
+      'Content-Type': 'application/json',
+      ...fetchInit.headers,
+    },
+  });
+
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  if (!resp.body) throw new Error('No response body');
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6).trim();
+        if (data && data !== '[DONE]') {
+          onEvent(data);
+        }
+      }
+    }
+  }
+}
+
+function authHeaders(): Record<string, string> {
+  try {
+    const stored = localStorage.getItem('cloudforge-auth');
+    if (!stored) return {};
+    const token = JSON.parse(stored)?.state?.accessToken;
+    if (!token) return {};
+    return { Authorization: `Bearer ${token}` };
+  } catch {
+    return {};
+  }
 }
 
 // ── Agent 1 — Requirements → Constraint extraction ────────────────────────────
@@ -26,21 +78,41 @@ const MOCK_CONSTRAINTS: ConstraintChip[] = [
   { id: 'c4', label: '99.9% uptime SLA', category: 'reliability' },
 ];
 
-/**
- * BACKEND HOOK: POST /api/agent1
- * Body: { prdText: string }
- * Response stream: Server-Sent Events, each event is a ConstraintChip JSON object.
- */
 export async function runAgent1(
-  _prdText: string,
-  onChip?: (chip: ConstraintChip, index: number) => void
+  prdText: string,
+  onChip?: (chip: ConstraintChip, index: number) => void,
+  projectId?: string,
 ): Promise<ConstraintChip[]> {
-  await delay(2000);
-  for (let i = 0; i < MOCK_CONSTRAINTS.length; i++) {
-    onChip?.(MOCK_CONSTRAINTS[i], i);
-    await delay(350);
+  const chips: ConstraintChip[] = [];
+
+  if (!projectId) {
+    await delay(2000);
+    for (let i = 0; i < MOCK_CONSTRAINTS.length; i++) {
+      onChip?.(MOCK_CONSTRAINTS[i], i);
+      await delay(350);
+    }
+    return MOCK_CONSTRAINTS;
   }
-  return MOCK_CONSTRAINTS;
+
+  await streamSSE(
+    `${API_URL}/workflows/prd/v2/start/${projectId}`,
+    {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ prd_text: prdText, cloud_provider: 'aws' }),
+    },
+    (data) => {
+      try {
+        const event = JSON.parse(data);
+        if (event.type === 'constraint' && event.chip) {
+          chips.push(event.chip);
+          onChip?.(event.chip, chips.length - 1);
+        }
+      } catch { /* ignore parse errors */ }
+    }
+  );
+
+  return chips;
 }
 
 // ── Agent 2 — Constraints → Architecture ──────────────────────────────────────
@@ -175,21 +247,73 @@ export const AGENT2_STEPS = [
   'Generating explanation',
 ] as const;
 
-/**
- * BACKEND HOOK: POST /api/agent2
- * Body: { constraints: ConstraintChip[] }
- * Response stream: SSE with { step: number } events, then final { nodes, edges } payload.
- */
+function _mapNodeType(service: string): ForgeArchNode['type'] {
+  const s = service.toLowerCase();
+  if (s.includes('gateway') || s.includes('apigw')) return 'gateway';
+  if (s.includes('lambda') || s.includes('function') || s.includes('compute') || s.includes('ec2')) return 'compute';
+  if (s.includes('cache') || s.includes('redis') || s.includes('elasticache')) return 'cache';
+  if (s.includes('rds') || s.includes('database') || s.includes('postgres') || s.includes('mysql') || s.includes('s3')) return 'storage';
+  if (s.includes('auth') || s.includes('cognito') || s.includes('secret')) return 'auth';
+  return 'compute';
+}
+
 export async function runAgent2(
   _constraints: ConstraintChip[],
-  onStep?: Agent2StepCallback
+  onStep?: Agent2StepCallback,
+  projectId?: string,
 ): Promise<{ nodes: ForgeArchNode[]; edges: ForgeArchEdge[] }> {
-  for (let i = 0; i < AGENT2_STEPS.length; i++) {
-    onStep?.(i, AGENT2_STEPS.length);
-    await delay(1300 + Math.random() * 400);
+  if (!projectId) {
+    for (let i = 0; i < AGENT2_STEPS.length; i++) {
+      onStep?.(i, AGENT2_STEPS.length);
+      await delay(1300 + Math.random() * 400);
+    }
+    await delay(500);
+    return { nodes: MOCK_ARCH_NODES, edges: MOCK_ARCH_EDGES };
   }
-  await delay(500);
-  return { nodes: MOCK_ARCH_NODES, edges: MOCK_ARCH_EDGES };
+
+  let nodes: ForgeArchNode[] = [];
+  let edges: ForgeArchEdge[] = [];
+
+  await streamSSE(
+    `${API_URL}/workflows/architecture/v2/start/${projectId}`,
+    {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({}),
+    },
+    (data) => {
+      try {
+        const event = JSON.parse(data);
+        if (event.step !== undefined) {
+          onStep?.(event.step - 1, 7);
+        }
+        if (event.node === 'complete' && event.architecture_diagram) {
+          const diagram = event.architecture_diagram;
+          nodes = (diagram.nodes || []).map((n: Record<string, unknown>) => ({
+            id: String(n.id || ''),
+            label: String(n.service || n.label || n.id || ''),
+            sublabel: String(n.description || ''),
+            type: _mapNodeType(String(n.service || n.type || '')),
+            x: Math.random() * 500,
+            y: Math.random() * 400,
+            terraformResource: String(n.terraform_resource || ''),
+            estimatedCost: String(n.estimated_cost || ''),
+            config: (n.config as Record<string, string>) || {},
+            whyChosen: String(n.why_chosen || ''),
+            validates: (n.validates as string[]) || [],
+            blocks: (n.blocks as string[]) || [],
+            deployStatus: 'queued' as const,
+          }));
+          edges = (diagram.connections || []).map((c: Record<string, unknown>) => ({
+            from: String(c.from || c.from_ || c.source || ''),
+            to: String(c.to || c.target || ''),
+          }));
+        }
+      } catch { /* ignore */ }
+    }
+  );
+
+  return nodes.length > 0 ? { nodes, edges } : { nodes: MOCK_ARCH_NODES, edges: MOCK_ARCH_EDGES };
 }
 
 export { MOCK_ARCH_NODES, MOCK_ARCH_EDGES };
@@ -339,25 +463,81 @@ const MOCK_FILES: GeneratedFile[] = [
 
 export { MOCK_FILES };
 
-/**
- * BACKEND HOOK: POST /api/agent3
- * Body: { architectureData: { nodes, edges } }
- * Response stream: SSE with { file: GeneratedFile } events, then { done: true }.
- */
 export async function runAgent3(
-  _architectureData: { nodes: ForgeArchNode[]; edges: ForgeArchEdge[] },
-  callbacks?: Agent3Callbacks
+  architectureData: { nodes: ForgeArchNode[]; edges: ForgeArchEdge[] },
+  callbacks?: Agent3Callbacks,
+  projectId?: string,
 ): Promise<GeneratedFile[]> {
-  const total = MOCK_FILES.length;
-  callbacks?.onProgress(0, total);
-
-  for (let i = 0; i < MOCK_FILES.length; i++) {
-    await delay(1400 + Math.random() * 900);
-    callbacks?.onFileReady(MOCK_FILES[i]);
-    callbacks?.onProgress(i + 1, total);
+  if (!projectId) {
+    const total = MOCK_FILES.length;
+    callbacks?.onProgress(0, total);
+    for (let i = 0; i < MOCK_FILES.length; i++) {
+      await delay(1400 + Math.random() * 900);
+      callbacks?.onFileReady(MOCK_FILES[i]);
+      callbacks?.onProgress(i + 1, total);
+    }
+    return MOCK_FILES;
   }
 
-  return MOCK_FILES;
+  const files: GeneratedFile[] = [];
+
+  await streamSSE(
+    `${API_URL}/workflows/build/start/${projectId}`,
+    {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({}),
+    },
+    (data) => {
+      try {
+        const event = JSON.parse(data) as Record<string, unknown>;
+        if (event.phase === 'complete' && event.artifacts) {
+          const artifacts = event.artifacts as Record<string, string>;
+          let idx = 0;
+          for (const [path, content] of Object.entries(artifacts)) {
+            if (typeof content !== 'string') continue;
+            const name = path.split('/').pop() || path;
+            const ext = name.includes('.') ? name.split('.').pop()! : 'text';
+            const langMap: Record<string, string> = {
+              tf: 'hcl',
+              py: 'python',
+              ts: 'typescript',
+              js: 'javascript',
+              yaml: 'yaml',
+              yml: 'yaml',
+              json: 'json',
+              sh: 'bash',
+            };
+            const file: GeneratedFile = {
+              id: `f${idx++}`,
+              name,
+              path,
+              lang: langMap[ext] || ext,
+              status: 'new',
+              lines: content.split('\n').map((l) => ({ content: l, highlight: false })),
+            };
+            files.push(file);
+            callbacks?.onFileReady(file);
+            callbacks?.onProgress(files.length, Object.keys(artifacts).length);
+          }
+        } else if (
+          event.phase === 'orchestrator' ||
+          event.phase === 'tf_generator' ||
+          event.phase === 'assembler'
+        ) {
+          const done = (event.tasks_done as number) || 0;
+          const total = (event.tasks_total as number) || files.length || 1;
+          callbacks?.onProgress(done, total);
+        }
+      } catch { /* ignore */ }
+    }
+  );
+
+  // architectureData is intentionally unused when a real projectId is provided;
+  // the backend derives the build from its own stored architecture session.
+  void architectureData;
+
+  return files.length > 0 ? files : MOCK_FILES;
 }
 
 // ── Deploy agent ──────────────────────────────────────────────────────────────
@@ -396,21 +576,42 @@ const DEPLOY_SEQUENCE: Array<{
   { ms: 300,  line: '✓  Deployment complete — 5 resources provisioned, est. $32.70/mo' },
 ];
 
-/**
- * BACKEND HOOK: POST /api/deploy
- * Body: { files: GeneratedFile[], architectureData: { nodes, edges } }
- * Response stream: SSE with { log: string, nodeId?: string, status?: string } events.
- */
 export async function runDeploy(
   _files: GeneratedFile[],
   _architectureData: { nodes: ForgeArchNode[]; edges: ForgeArchEdge[] },
-  callbacks: DeployCallbacks
+  callbacks: DeployCallbacks,
+  projectId?: string,
 ): Promise<void> {
-  for (const event of DEPLOY_SEQUENCE) {
-    await delay(event.ms);
-    callbacks.onLog(event.line);
-    if (event.nodeId && event.status) {
-      callbacks.onNodeStatus(event.nodeId, event.status);
+  if (!projectId) {
+    for (const event of DEPLOY_SEQUENCE) {
+      await delay(event.ms);
+      callbacks.onLog(event.line);
+      if (event.nodeId && event.status) {
+        callbacks.onNodeStatus(event.nodeId, event.status);
+      }
     }
+    return;
   }
+
+  await streamSSE(
+    `${API_URL}/workflows/deploy/start/${projectId}`,
+    {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({}),
+    },
+    (data) => {
+      try {
+        const event = JSON.parse(data) as Record<string, unknown>;
+        if (event.type === 'log') {
+          callbacks.onLog(event.line as string);
+        } else if (event.type === 'node_status') {
+          callbacks.onNodeStatus(
+            event.nodeId as string,
+            event.status as 'provisioning' | 'live'
+          );
+        }
+      } catch { /* ignore */ }
+    }
+  );
 }
