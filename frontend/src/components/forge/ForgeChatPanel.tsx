@@ -333,8 +333,8 @@ function ClarificationCard({
               {q.question}
             </p>
 
-            {/* Option pills */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+            {/* Option pills — uniform grid so all chips share equal width */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '6px' }}>
               {q.options.map((opt, optIdx) => {
                 const isSelected = selectedOptIdx === optIdx;
                 return (
@@ -344,10 +344,10 @@ function ClarificationCard({
                     disabled={disabled}
                     onClick={() => handleOptionClick(qIdx, optIdx)}
                     style={{
-                      padding: '4px 10px',
-                      borderRadius: '100px',
+                      padding: '6px 10px',
+                      borderRadius: '7px',
                       border: `0.5px solid ${isSelected ? 'rgba(45,212,191,0.35)' : 'var(--lp-border)'}`,
-                      background: isSelected ? 'var(--lp-accent-dim)' : 'transparent',
+                      background: isSelected ? 'var(--lp-accent-dim)' : 'var(--lp-elevated)',
                       color: isSelected ? 'var(--lp-accent)' : 'var(--lp-text-secondary)',
                       fontFamily: 'var(--font-inter), system-ui, sans-serif',
                       fontSize: '11px',
@@ -356,6 +356,8 @@ function ClarificationCard({
                       transition: 'background 120ms ease, border-color 120ms ease, color 120ms ease',
                       outline: 'none',
                       lineHeight: 1.4,
+                      textAlign: 'center',
+                      width: '100%',
                     }}
                     aria-pressed={isSelected}
                   >
@@ -1108,42 +1110,47 @@ function InputBar({
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
-        <textarea
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={handleKey}
-          placeholder={isProcessing ? 'Agent is responding…' : PLACEHOLDER[stage]}
-          disabled={isProcessing}
-          rows={1}
-          style={{
-            flex: 1,
-            resize: 'none',
-            background: 'var(--lp-elevated)',
-            border: '0.5px solid var(--lp-border-hover)',
-            borderRadius: '8px',
-            padding: '8px 10px',
-            fontFamily: 'var(--font-inter), system-ui, sans-serif',
-            fontSize: '12px',
-            color: 'var(--lp-text-primary)',
-            outline: 'none',
-            lineHeight: 1.5,
-            maxHeight: '80px',
-            overflow: 'auto',
-            opacity: isProcessing ? 0.5 : 1,
-          }}
-          aria-label="Message input"
-        />
+      {/* Textarea — full width, taller */}
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={handleKey}
+        placeholder={isProcessing ? 'Agent is responding…' : PLACEHOLDER[stage]}
+        disabled={isProcessing}
+        rows={3}
+        style={{
+          width: '100%',
+          boxSizing: 'border-box',
+          resize: 'none',
+          background: 'var(--lp-elevated)',
+          border: '0.5px solid var(--lp-border-hover)',
+          borderRadius: '8px',
+          padding: '9px 11px',
+          fontFamily: 'var(--font-inter), system-ui, sans-serif',
+          fontSize: '13px',
+          color: 'var(--lp-text-primary)',
+          outline: 'none',
+          lineHeight: 1.55,
+          minHeight: '72px',
+          maxHeight: '160px',
+          overflow: 'auto',
+          opacity: isProcessing ? 0.5 : 1,
+          transition: 'border-color 120ms ease, opacity 120ms ease',
+        }}
+        aria-label="Message input"
+      />
 
+      {/* Bottom toolbar: attach / mic / provider — send pushed to right */}
+      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
         {/* File attach button */}
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={isProcessing}
           style={{
-            width: '30px',
-            height: '30px',
-            borderRadius: '8px',
+            width: '28px',
+            height: '28px',
+            borderRadius: '7px',
             background: 'transparent',
             border: '0.5px solid var(--lp-border)',
             color: attachedFile ? 'var(--lp-accent)' : 'var(--lp-text-hint)',
@@ -1168,9 +1175,9 @@ function InputBar({
             onClick={toggleRecording}
             disabled={isProcessing}
             style={{
-              width: '30px',
-              height: '30px',
-              borderRadius: '8px',
+              width: '28px',
+              height: '28px',
+              borderRadius: '7px',
               background: isRecording ? 'rgba(239,68,68,0.12)' : 'transparent',
               border: `0.5px solid ${isRecording ? 'rgba(239,68,68,0.4)' : 'var(--lp-border)'}`,
               color: isRecording ? '#ef4444' : 'var(--lp-text-hint)',
@@ -1194,58 +1201,66 @@ function InputBar({
           </button>
         )}
 
+        {/* Cloud provider selector — inline in toolbar */}
+        {stage === 'requirements' && (
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value)}
+            disabled={sending}
+            aria-label="Cloud provider"
+            style={{
+              background: 'var(--lp-elevated)',
+              border: '0.5px solid var(--lp-border)',
+              borderRadius: '7px',
+              padding: '4px 8px',
+              fontFamily: 'var(--font-inter), system-ui, sans-serif',
+              fontSize: '11px',
+              color: 'var(--lp-text-secondary)',
+              cursor: sending ? 'default' : 'pointer',
+              outline: 'none',
+              opacity: sending ? 0.5 : 1,
+              height: '28px',
+            }}
+          >
+            {CLOUD_PROVIDERS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Send button */}
         <button
           type="button"
           onClick={handleSend}
           disabled={!value.trim() || isProcessing}
           style={{
-            width: '30px',
-            height: '30px',
-            borderRadius: '8px',
+            height: '28px',
+            padding: '0 12px',
+            borderRadius: '7px',
             background: value.trim() && !isProcessing ? 'var(--lp-accent-dim)' : 'transparent',
             border: `0.5px solid ${value.trim() && !isProcessing ? 'rgba(45,212,191,0.3)' : 'var(--lp-border)'}`,
             color: value.trim() && !isProcessing ? 'var(--lp-accent)' : 'var(--lp-text-hint)',
             cursor: value.trim() && !isProcessing ? 'pointer' : 'default',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'center',
+            gap: '5px',
             flexShrink: 0,
+            fontFamily: 'var(--font-inter), system-ui, sans-serif',
+            fontSize: '11px',
+            fontWeight: 500,
             transition: 'all 120ms ease',
           }}
           aria-label="Send message"
         >
-          <Send size={13} aria-hidden="true" />
+          <Send size={12} aria-hidden="true" />
+          Send
         </button>
       </div>
-
-      {/* Cloud provider selector — only relevant on requirements stage */}
-      {stage === 'requirements' && (
-        <select
-          value={provider}
-          onChange={(e) => setProvider(e.target.value)}
-          disabled={isProcessing}
-          aria-label="Cloud provider"
-          style={{
-            alignSelf: 'flex-start',
-            background: 'var(--lp-elevated)',
-            border: '0.5px solid var(--lp-border)',
-            borderRadius: '6px',
-            padding: '3px 8px',
-            fontFamily: 'var(--font-inter), system-ui, sans-serif',
-            fontSize: '11px',
-            color: 'var(--lp-text-secondary)',
-            cursor: isProcessing ? 'default' : 'pointer',
-            outline: 'none',
-            opacity: isProcessing ? 0.5 : 1,
-          }}
-        >
-          {CLOUD_PROVIDERS.map((p) => (
-            <option key={p.value} value={p.value}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      )}
     </div>
   );
 }
@@ -1292,8 +1307,8 @@ export default function ForgeChatPanel() {
     `}</style>
     <aside
       style={{
-        width: '280px',
-        minWidth: '280px',
+        width: '340px',
+        minWidth: '340px',
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
