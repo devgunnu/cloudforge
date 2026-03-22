@@ -1,5 +1,10 @@
 Generate {{ language }} unit tests for the following service.
 
+{% if architecture_overview %}
+## Architecture Overview
+{{ architecture_overview }}
+{% endif %}
+
 ## Service
 - ID: {{ service_id }}
 - Type: {{ service_type | upper }}

@@ -1,5 +1,12 @@
 Generate {{ language }} application code for the following AWS service.
 
+{% if architecture_overview %}
+## Architecture Overview
+This service is part of a larger architecture. Understand the full system context so your code integrates correctly with other services:
+
+{{ architecture_overview }}
+{% endif %}
+
 ## Service Details
 - ID: {{ service_id }}
 - Type: {{ service_type | upper }}
