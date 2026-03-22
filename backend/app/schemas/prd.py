@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PrdStartRequest(BaseModel):
-    prd_text: str
-    cloud_provider: str = "aws"
+    prd_text: str = Field(..., min_length=10, max_length=50_000)
+    cloud_provider: str = Field("aws", max_length=20)
 
 
 class PrdRespondRequest(BaseModel):

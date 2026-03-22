@@ -1,20 +1,20 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ProjectCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
-    region: Optional[str] = None
-    cloud_provider: Optional[str] = None
+    name: str = Field(..., min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=2000)
+    region: Optional[str] = Field(None, max_length=50)
+    cloud_provider: Optional[str] = Field(None, max_length=20)
 
 
 class ProjectUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    github_repo: Optional[str] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    description: Optional[str] = Field(None, max_length=2000)
+    github_repo: Optional[str] = Field(None, max_length=200)
 
 
 class CloudCredentials(BaseModel):
