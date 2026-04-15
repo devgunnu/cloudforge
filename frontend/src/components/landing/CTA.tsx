@@ -1,8 +1,8 @@
 'use client';
 
 import { motion, useInView } from 'framer-motion';
-import Link from 'next/link';
 import { useRef } from 'react';
+import WaitlistForm from './WaitlistForm';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -79,44 +79,11 @@ export default function CTA() {
           transition={{ duration: 0.6, ease: EASE, delay: 0.2 }}
           style={{
             display: 'flex',
-            gap: '12px',
             justifyContent: 'center',
-            flexWrap: 'wrap',
             marginBottom: '24px',
           }}
         >
-          <Link
-            href="/signup"
-            className="lp-btn-primary"
-            style={{
-              fontFamily: 'var(--font-inter), system-ui, sans-serif',
-              fontSize: '15px',
-              fontWeight: 500,
-              padding: '12px 24px',
-              borderRadius: '10px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-          >
-            Start building free <span style={{ fontSize: '17px', lineHeight: 1 }}>→</span>
-          </Link>
-          <a
-            href="https://github.com/cloudforge-dev/cloudforge"
-            className="lp-btn-ghost"
-            style={{
-              fontFamily: 'var(--font-inter), system-ui, sans-serif',
-              fontSize: '15px',
-              fontWeight: 400,
-              padding: '12px 24px',
-              borderRadius: '10px',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-          >
-            View on GitHub
-          </a>
+          <WaitlistForm />
         </motion.div>
 
         <motion.p
