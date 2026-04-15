@@ -10,7 +10,7 @@
 
 **Knowledge-graph-driven AWS infrastructure builder. Describe what you want to build — CloudForge derives the architecture from validated cloud patterns, generates production-grade Terraform, and provisions real resources with zero persistent cloud credentials.**
 
-> Built for a hackathon. Shipped end-to-end.
+> Built for a hackathon. Shipped end-to-end
 
 ---
 
