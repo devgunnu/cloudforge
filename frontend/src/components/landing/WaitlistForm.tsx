@@ -33,7 +33,7 @@ export default function WaitlistForm({ className }: WaitlistFormProps) {
     setErrorMessage('');
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/waitlist`, {
+      const res = await fetch(`/api/waitlist`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),

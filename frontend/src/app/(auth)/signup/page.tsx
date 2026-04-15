@@ -230,7 +230,8 @@ export default function SignupPage() {
 
   function handleOAuth() {
     setLoading(true);
-    window.location.href = 'http://localhost:8000/auth/github/login';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    window.location.href = `${apiUrl}/auth/github/login`;
   }
 
   return (

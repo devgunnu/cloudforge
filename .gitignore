@@ -99,3 +99,4 @@ coverage/
 
 # ── CloudForge specific ───────────────────────────────────────
 backend/outputs
+.env*.local
