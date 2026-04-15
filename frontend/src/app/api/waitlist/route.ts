@@ -228,7 +228,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       'code' in err &&
       (err as { code: unknown }).code === 11000
     ) {
-      return NextResponse.json({ message: 'already_registered' }, { status: 200 })
+      return NextResponse.json({ message: 'You\'re registered' }, { status: 200 })
     }
 
     return NextResponse.json(

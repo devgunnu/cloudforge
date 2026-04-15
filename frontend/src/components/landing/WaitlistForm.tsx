@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import type { Options as ConfettiOptions } from 'canvas-confetti';
 
 interface WaitlistFormProps {
   className?: string;
@@ -19,6 +20,18 @@ export default function WaitlistForm({ className }: WaitlistFormProps) {
     const RFC_EMAIL_RE =
       /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$/;
     return RFC_EMAIL_RE.test(value.trim());
+  }
+
+  async function fireConfetti(): Promise<void> {
+    const confetti = (await import('canvas-confetti')).default;
+    const options: ConfettiOptions = {
+      particleCount: 80,
+      spread: 60,
+      origin: { y: 0.6 },
+      colors: ['#22c55e', '#ffffff', '#86efac'],
+      zIndex: 9999,
+    };
+    confetti(options);
   }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -41,6 +54,7 @@ export default function WaitlistForm({ className }: WaitlistFormProps) {
 
       if (res.ok) {
         setState('success');
+        void fireConfetti();
         return;
       }
 
