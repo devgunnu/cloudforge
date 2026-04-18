@@ -2,6 +2,31 @@ import { NextRequest, NextResponse } from 'next/server'
 import { MongoClient, ServerApiVersion } from 'mongodb'
 
 // ---------------------------------------------------------------------------
+// Module-level singleton — reused across warm serverless invocations.
+// createIndex is called once during initialisation so it doesn't add latency
+// to individual requests.
+// ---------------------------------------------------------------------------
+let cachedClient: MongoClient | null = null
+
+async function getClient(): Promise<MongoClient> {
+  if (cachedClient) return cachedClient
+  const client = new MongoClient(process.env.MONGODB_URL!, {
+    serverApi: {
+      version: ServerApiVersion.v1,
+      strict: true,
+      deprecationErrors: true,
+    },
+  })
+  await client.connect()
+  const col = client
+    .db(process.env.MONGODB_DB_NAME ?? 'cloudforge')
+    .collection('waitlist')
+  await col.createIndex({ email: 1 }, { unique: true })
+  cachedClient = client
+  return cachedClient
+}
+
+// ---------------------------------------------------------------------------
 // Blocklist: disposable / throwaway email providers
 // ---------------------------------------------------------------------------
 const DISPOSABLE_DOMAINS = new Set([
@@ -200,22 +225,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     )
   }
 
+  if (!process.env.MONGODB_URL) {
+    return NextResponse.json(
+      { error: { code: 'configuration_error', message: 'Server configuration error.' } },
+      { status: 500 },
+    )
+  }
+
   const email = rawEmail.trim().toLowerCase()
 
-  const client = new MongoClient(process.env.MONGODB_URL!, {
-    serverApi: {
-      version: ServerApiVersion.v1,
-      strict: true,
-      deprecationErrors: true,
-    },
-  })
-
   try {
-    await client.connect()
-    const col = client.db('cloudforge').collection('waitlist')
-
-    // Ensure unique index exists (idempotent — safe to run on every cold start).
-    await col.createIndex({ email: 1 }, { unique: true })
+    const client = await getClient()
+    const col = client
+      .db(process.env.MONGODB_DB_NAME ?? 'cloudforge')
+      .collection('waitlist')
 
     await col.insertOne({ email, inserted_at: new Date() })
 
@@ -235,7 +258,5 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       { error: { code: 'server_error', message: 'An unexpected error occurred.' } },
       { status: 500 },
     )
-  } finally {
-    await client.close()
   }
 }

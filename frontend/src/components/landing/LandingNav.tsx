@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import WaitlistForm from './WaitlistForm';
 
@@ -11,8 +11,6 @@ const NAV_LINKS = [
 ] as const;
 
 function WaitlistModal({ onClose }: { onClose: () => void }) {
-  const formWrapperRef = useRef<HTMLDivElement>(null);
-
   // Scroll lock
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -30,27 +28,8 @@ function WaitlistModal({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  // Detect WaitlistForm success state via MutationObserver, then auto-close after 2000ms
-  useEffect(() => {
-    const wrapper = formWrapperRef.current;
-    if (!wrapper) return;
-
-    let closeTimer: ReturnType<typeof setTimeout> | null = null;
-
-    const observer = new MutationObserver(() => {
-      // WaitlistForm renders a plain <div> with "You're on the list." on success
-      // (no form element present). Detect by absence of <form>.
-      if (!wrapper.querySelector('form') && closeTimer === null) {
-        closeTimer = setTimeout(onClose, 2000);
-      }
-    });
-
-    observer.observe(wrapper, { childList: true, subtree: true });
-
-    return () => {
-      observer.disconnect();
-      if (closeTimer !== null) clearTimeout(closeTimer);
-    };
+  const handleSuccess = useCallback(() => {
+    setTimeout(onClose, 2000);
   }, [onClose]);
 
   return ReactDOM.createPortal(
@@ -126,9 +105,7 @@ function WaitlistModal({ onClose }: { onClose: () => void }) {
           Be first to know when CloudForge launches.
         </p>
 
-        <div ref={formWrapperRef}>
-          <WaitlistForm />
-        </div>
+        <WaitlistForm onSuccess={handleSuccess} />
       </div>
     </div>,
     document.body,

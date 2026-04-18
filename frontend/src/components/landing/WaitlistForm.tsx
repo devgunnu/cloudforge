@@ -5,11 +5,12 @@ import type { Options as ConfettiOptions } from 'canvas-confetti';
 
 interface WaitlistFormProps {
   className?: string;
+  onSuccess?: () => void;
 }
 
 type FormState = 'idle' | 'loading' | 'success' | 'error';
 
-export default function WaitlistForm({ className }: WaitlistFormProps) {
+export default function WaitlistForm({ className, onSuccess }: WaitlistFormProps) {
   const [email, setEmail] = useState('');
   const [state, setState] = useState<FormState>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -55,6 +56,7 @@ export default function WaitlistForm({ className }: WaitlistFormProps) {
       if (res.ok) {
         setState('success');
         void fireConfetti();
+        onSuccess?.();
         return;
       }
 
