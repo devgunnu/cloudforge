@@ -64,6 +64,11 @@ yarn-error.log*
 *.log
 logs/
 
+# ── Screenshots / local assets ───────────────────────────────
+*.png
+frontend/README-deployment.md
+frontend/src/lib/demo/
+
 # ── OS ───────────────────────────────────────────────────────
 .DS_Store
 .DS_Store?
@@ -94,3 +99,4 @@ coverage/
 
 # ── CloudForge specific ───────────────────────────────────────
 backend/outputs
+.env*.local

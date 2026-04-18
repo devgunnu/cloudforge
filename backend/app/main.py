@@ -1,10 +1,13 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
-
 from app.db.mongo import connect_mongo, disconnect_mongo
 from app.routers import agent3, auth, health, projects, workflows
 from app.routers.architecture import router as architecture_router
@@ -15,11 +18,11 @@ from app.routers.deploy import router as deploy_router
 from app.routers.files import router as files_router
 from app.routers.history import router as history_router
 from app.routers.prd import router as prd_router
+from app.routers.waitlist import router as waitlist_router
 
 logger = logging.getLogger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
-from app.routers import auth
 
 
 @asynccontextmanager
@@ -57,13 +60,24 @@ app = FastAPI(
 )
 
 # CORS configuration
+origins = [
+    "http://localhost:3000",  # Local development
+    "https://*.vercel.app",   # Vercel deployments
+    "https://*.up.railway.app",  # Railway deployments
+    settings.frontend_url,    # Configured frontend URL
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Frontend URL
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Rate limiting
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.include_router(health.router)
 app.include_router(workflows.router)
@@ -77,6 +91,7 @@ app.include_router(deploy_router)
 app.include_router(files_router)
 app.include_router(history_router)
 app.include_router(auth.router)
+app.include_router(waitlist_router)
 
 
 @app.get("/")

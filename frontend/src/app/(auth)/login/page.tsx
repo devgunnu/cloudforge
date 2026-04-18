@@ -177,7 +177,8 @@ export default function LoginPage() {
   function handleOAuth() {
     setLoading(true);
     // Redirect to backend GitHub OAuth login
-    window.location.href = 'http://localhost:8000/auth/github/login';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    window.location.href = `${apiUrl}/auth/github/login`;
   }
 
   return (

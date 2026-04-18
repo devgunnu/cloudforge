@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion';
 import { FileText, MessageSquare, Network, GitCommit, Zap } from 'lucide-react';
-import Link from 'next/link';
+import WaitlistForm from './WaitlistForm';
 import { useEffect, useState } from 'react';
 
 const EASE = [0.16, 1, 0.3, 1] as const;
@@ -153,6 +153,7 @@ function PipelineVisual() {
 export default function Hero() {
   return (
     <section
+      id="waitlist"
       className="lp-hero-dotgrid"
       style={{
         minHeight: '100vh',
@@ -246,50 +247,9 @@ export default function Hero() {
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.7, ease: EASE, delay: 0.5 }}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          marginBottom: '60px',
-          flexWrap: 'wrap',
-          justifyContent: 'center',
-          position: 'relative',
-        }}
+        style={{ marginBottom: '60px', position: 'relative' }}
       >
-        <Link
-          href="/signup"
-          className="lp-btn-primary"
-          style={{
-            fontFamily: 'var(--font-inter), system-ui, sans-serif',
-            fontSize: '15px',
-            fontWeight: 500,
-            padding: '16px 24px',
-            borderRadius: '8px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            letterSpacing: '-0.01em',
-          }}
-        >
-          Start building free <span style={{ fontSize: '17px', lineHeight: 1 }}>→</span>
-        </Link>
-        <a
-          href="https://github.com/cloudforge-dev/cloudforge"
-          className="lp-btn-ghost"
-          style={{
-            fontFamily: 'var(--font-inter), system-ui, sans-serif',
-            fontSize: '15px',
-            fontWeight: 400,
-            padding: '16px 24px',
-            borderRadius: '8px',
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '8px',
-            border: '0.5px solid rgba(255,255,255,0.5)',
-          }}
-        >
-          View on GitHub
-        </a>
+        <WaitlistForm />
       </motion.div>
 
       {/* Pipeline visual */}

@@ -41,6 +41,10 @@ def deployments_col():
     return get_db()["deployments"]
 
 
+def waitlist_col():
+    return get_db()["waitlist"]
+
+
 async def ensure_indexes() -> None:
     """Create all required indexes. Safe to call on every startup (no-op if already exist)."""
     await users_col().create_index("email", unique=True, background=True)
@@ -61,6 +65,7 @@ async def ensure_indexes() -> None:
     await deployments_col().create_index(
         [("project_id", 1), ("created_at", -1)], background=True
     )
+    await waitlist_col().create_index("email", unique=True, background=True)
 
 
 async def connect_mongo() -> None:

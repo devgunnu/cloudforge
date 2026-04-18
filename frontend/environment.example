@@ -1,0 +1,7 @@
+# CloudForge Frontend Environment Variables
+# Copy this file to .env.local and update values for local development
+
+# Backend API URL
+# For production deployment: https://cloudforge-backend.up.railway.app
+# For local development: http://localhost:8000
+NEXT_PUBLIC_API_URL=https://cloudforge-backend.up.railway.app
